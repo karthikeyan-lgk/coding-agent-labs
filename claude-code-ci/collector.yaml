@@ -1,0 +1,41 @@
+# Claude Code -> this Collector -> Jaeger. The account fields are deleted here,
+# before anything is stored or shown.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  attributes/redact:
+    actions:
+      - { key: user.email, action: delete }
+      - { key: user.id, action: delete }
+      - { key: user.account_uuid, action: delete }
+      - { key: user.account_id, action: delete }
+      - { key: organization.id, action: delete }
+  resource/redact:
+    attributes:
+      - { key: user.email, action: delete }
+      - { key: user.account_uuid, action: delete }
+      - { key: user.account_id, action: delete }
+      - { key: organization.id, action: delete }
+  # Recorded commands carry the laptop's absolute path; show it as a CI workspace instead.
+  transform/paths:
+    trace_statements:
+      - context: span
+        statements:
+          - replace_pattern(attributes["full_command"], "/home/[^ ]*/ci_pipeline/out/repo", "/work/repo")
+          - replace_pattern(attributes["file_path"], "/home/[^ ]*/ci_pipeline/out/repo", "/work/repo")
+  batch: {}
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: true }
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/redact, resource/redact, transform/paths, batch]
+      exporters: [otlp/jaeger]
