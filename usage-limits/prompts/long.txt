@@ -1,0 +1,35 @@
+# Experiment 1: the long session. Turn 1 and the last probe are the same one-line question.
+Reply with just the word ok.
+Read tinyledger/customers.py and explain what it does in 3 short bullet points.
+Read tinyledger/invoices.py and explain what it does in 3 short bullet points.
+Read tinyledger/line_items.py and explain what it does in 3 short bullet points.
+Read tinyledger/payments.py and explain what it does in 3 short bullet points.
+Read tinyledger/refunds.py and explain what it does in 3 short bullet points.
+Read tinyledger/taxes.py and explain what it does in 3 short bullet points.
+Read tinyledger/discounts.py and explain what it does in 3 short bullet points.
+Read tinyledger/reminders.py and explain what it does in 3 short bullet points.
+Read tinyledger/ledger.py and explain what it does in 3 short bullet points.
+Read tinyledger/reports.py and explain what it does in 3 short bullet points.
+Read tinyledger/webhooks.py and explain what it does in 3 short bullet points.
+Read tinyledger/audit.py and explain what it does in 3 short bullet points.
+Compare tinyledger/payments.py and tinyledger/refunds.py: what do they share and what differs? Keep it to 4 lines.
+Compare tinyledger/invoices.py and tinyledger/line_items.py: what do they share and what differs? Keep it to 4 lines.
+Compare tinyledger/taxes.py and tinyledger/discounts.py: what do they share and what differs? Keep it to 4 lines.
+Compare tinyledger/reminders.py and tinyledger/webhooks.py: what do they share and what differs? Keep it to 4 lines.
+Compare tinyledger/ledger.py and tinyledger/reports.py: what do they share and what differs? Keep it to 4 lines.
+Compare tinyledger/customers.py and tinyledger/audit.py: what do they share and what differs? Keep it to 4 lines.
+Suggest one pytest test for the validate() method in tinyledger/payments.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/refunds.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/invoices.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/taxes.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/ledger.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/webhooks.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/discounts.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/reports.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/customers.py. Show only the test function.
+Suggest one pytest test for the validate() method in tinyledger/audit.py. Show only the test function.
+Reply with just the word ok.
+/compact
+Reply with just the word ok.
+/clear
+Reply with just the word ok.

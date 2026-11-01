@@ -1,0 +1,45 @@
+# Recorded 2026-10-30 14:11-14:24 IST, Claude Code 2.1.314, Claude Pro subscription login (no API key)
+# Demo repo: tinyledger (make_repo.py, 15 modules, 1,062 lines). Interactive sessions driven in tmux by drive.py.
+# Sources: out/turns.jsonl (status-line meter per turn), out/telemetry.json (api_request events), Prometheus.
+# The 5-hour % is shared with everything else on the account (another Claude Code session ran at the same time),
+# so the % readings are context only. Every token and cost number below is from these sessions alone.
+
+## Same one-line prompt ("Reply with just the word ok."), Sonnet, input tokens of the request
+fresh-1   42,531   (input 2 + cache_read 26,635 + cache_creation 15,894)   cost_usd 0.0663
+fresh-2   42,534   (input 2 + cache_read 29,319 + cache_creation 13,213)   cost_usd 0.0558
+mcp-1     44,577   (input 2 + cache_read 29,319 + cache_creation 15,256)   2 MCP servers (youtube, vidiq)
+mcp-2     44,577   same
+=> MCP servers: +2,044 tokens per request (+4.8%)
+Also in every session: a separate Haiku request (query_source generate_session_title, ~1,170 input tokens)
+and a prompt_suggestion request after replies.
+
+## Long session (prompts/long.txt), Sonnet, input tokens per request
+turn 1  "ok"                  42,535
+turn 2  read customers.py     43,951
+turn 3  read invoices.py      45,660
+turn 12 read webhooks.py      61,216     (files read: ~+1,700 per turn)
+turn 13 read audit.py         62,926
+turn 14 compare two files     63,296     (compare / test prompts: ~+350 per turn)
+turn 30 "ok"                  68,834     => 1.62x turn 1
+/compact request              reads 68,818 cached + 2,009 input, writes 2,743 output, cost_usd 0.0383
+turn 32 "ok" after /compact   51,888
+turn 34 "ok" after /clear     42,655     (cache_creation 14,113: the setup is written to the cache again)
+
+## Same task on three models ("Find every place TIMEOUT_SECONDS or MAX_REFUNDS is defined or used...")
+model    first request: input / cache_read / cache_creation / output   cost_usd   session total (cost.usage metric)
+haiku    2 / 29,266 / 14,042 / 214                                     0.0032     0.004
+sonnet   2 / 28,540 / 14,028 / 194                                     0.0609     0.074
+opus     2 / 26,519 / 16,145 / 119                                     0.1369     0.164
+=> tokens about the same (43.0k-43.8k per request); cost at API rates Opus 2.2x Sonnet, Sonnet ~19x Haiku
+Second request of the same task (cache warm): sonnet 0.0073, opus 0.0148, haiku 0.0006
+
+## First message vs the rest (Sonnet)
+first request of a session writes ~14k-16k tokens to the cache: 0.06-0.07 USD
+a later request with the cache warm: ~0.007 USD (about 9x less)
+
+## Facts used from docs / the installed version
+- /usage (aliases /cost, /stats): "Show session cost, plan usage, and what's contributing to your limits" (2.1.314)
+- Limits: a 5-hour session limit and a weekly limit, shared between Claude and Claude Code (support.claude.com)
+- Status-line JSON carries rate_limits.five_hour / seven_day used_percentage (whole percents) on Pro/Max
+- cost.usage / cost_usd = what the request would cost at API prices; Anthropic doesn't publish how that maps
+  to the subscription limit

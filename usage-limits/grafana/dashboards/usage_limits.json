@@ -1,0 +1,293 @@
+{
+  "uid": "claude-usage-limits",
+  "title": "Claude Code: what burns your limit",
+  "tags": [
+    "claude-code",
+    "usage-limits"
+  ],
+  "time": {
+    "from": "now-12h",
+    "to": "now"
+  },
+  "refresh": "",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Same one-word prompt: input tokens per request",
+      "description": "What Claude Code sent for 'Reply with just the word ok.' Fresh session vs the same with MCP servers configured. From the limit_meter status line.",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "last_over_time(claude_last_request_input_tokens{lab_arm=~\"fresh.*|mcp.*\"}[$__range])",
+          "legendFormat": "{{lab_arm}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e8743b"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Long session: tokens per request, turn by turn",
+      "description": "30 turns of real work, then /compact (dip) and /clear (back to a fresh session).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "claude_last_request_input_tokens{lab_arm=\"long\"} > 0",
+          "legendFormat": "tokens sent",
+          "refId": "A",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3ec7d4"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Where the tokens went: fresh session vs 30-turn session",
+      "description": "Claude Code's token.usage metric by type: input, output, cacheRead, cacheCreation. Includes Claude Code's own background calls (session title, prompt suggestion).",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "sum by (lab_arm, type) (max_over_time(claude_code_token_usage_tokens_total{lab_arm=~\"fresh-1|long\"}[$__range]))",
+          "legendFormat": "{{lab_arm}} \u00b7 {{type}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e8743b"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Same task, three models: cost at API rates",
+      "description": "cost.usage is what the run would cost at API prices. Anthropic doesn't publish how this maps to the subscription limit percentage.",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "sum(max_over_time(claude_code_cost_usage_USD_total{lab_arm=\"model-haiku\"}[$__range]))",
+          "legendFormat": "Haiku",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "sum(max_over_time(claude_code_cost_usage_USD_total{lab_arm=\"model-sonnet\"}[$__range]))",
+          "legendFormat": "Sonnet",
+          "refId": "B",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "sum(max_over_time(claude_code_cost_usage_USD_total{lab_arm=\"model-opus\"}[$__range]))",
+          "legendFormat": "Opus",
+          "refId": "C",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 3,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3ec7d4"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "5-hour limit used (from the status line)",
+      "description": "rate_limits.five_hour.used_percentage from the status-line JSON. Whole percents only.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prom"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prom"
+          },
+          "expr": "max(claude_limit_five_hour_used_percent{lab_arm=~\"fresh.*|long|mcp.*|model.*\"})",
+          "legendFormat": "5-hour limit %",
+          "refId": "A",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0,
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3ec7d4"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        }
+      }
+    }
+  ],
+  "editable": true
+}
