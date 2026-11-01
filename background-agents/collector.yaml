@@ -1,4 +1,4 @@
-# Claude Code metrics + events → Prometheus (for Grafana) and a raw file (for the numbers on screen).
+# Claude Code metrics → Prometheus, events (api_request with query_source) → Loki, both → a raw file (for the numbers on screen).
 # Identity fields are deleted before anything is stored.
 receivers:
   otlp:
@@ -29,8 +29,11 @@ exporters:
     endpoint: 0.0.0.0:8889
     resource_to_telemetry_conversion:
       enabled: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
   file:
     path: /out/telemetry.json
+    append: true   # a restart must not wipe recorded runs
 service:
   pipelines:
     metrics:
@@ -40,4 +43,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [attributes/drop-identity, resource/drop-identity]
-      exporters: [file]
+      exporters: [otlphttp/loki, file]

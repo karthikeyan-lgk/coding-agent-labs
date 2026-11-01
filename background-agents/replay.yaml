@@ -1,0 +1,13 @@
+# Replays the recorded events in out/telemetry.json into Loki, keeping their original timestamps.
+receivers:
+  otlpjsonfile:
+    include: [/out/telemetry.json]
+    start_at: beginning
+exporters:
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+service:
+  pipelines:
+    logs:
+      receivers: [otlpjsonfile]
+      exporters: [otlphttp/loki]

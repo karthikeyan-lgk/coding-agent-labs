@@ -25,7 +25,7 @@ def session(repo: str, model: str, arm: str, settings: dict | None) -> None:
     env = ("CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=otlp OTEL_LOGS_EXPORTER=otlp "
            "OTEL_EXPORTER_OTLP_PROTOCOL=grpc OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14317 "
            "OTEL_LOGS_EXPORT_INTERVAL=2000 "
-           f"OTEL_RESOURCE_ATTRIBUTES=lab=background_agents,lab.arm={arm},lab.run=1")
+           f"OTEL_RESOURCE_ATTRIBUTES=lab=background_agents,lab.arm={arm},lab.run=2")
     extra = f" --settings '{json.dumps(settings)}'" if settings else ""
     tmux("kill-session", "-t", SESSION)
     tmux("new-session", "-d", "-s", SESSION, "-x", "160", "-y", "48",

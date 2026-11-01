@@ -1,4 +1,4 @@
-# Ports are offset (14317 gRPC, 14318 HTTP, 19090, 13000) like the usage-limits lab; run one at a time.
+# Ports are offset (14317 gRPC, 14318 HTTP, 19090, 13000, Loki 13100) like the usage-limits lab; run one at a time.
 services:
   collector:
     image: otel/opentelemetry-collector-contrib:0.162.0
@@ -10,6 +10,10 @@ services:
     volumes: ["./prometheus.yaml:/etc/prometheus/prometheus.yml:ro"]
     ports: ["127.0.0.1:19090:9090"]
     depends_on: [collector]
+  loki:
+    image: grafana/loki:3.6.18
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports: ["127.0.0.1:13100:3100"]
   grafana:
     image: grafana/grafana:13.2.4
     environment:
@@ -18,4 +22,11 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     volumes: ["./grafana/provisioning:/etc/grafana/provisioning:ro", "./grafana/dashboards:/var/lib/grafana/dashboards:ro"]
     ports: ["127.0.0.1:13000:3000"]
-    depends_on: [prometheus]
+    depends_on: [prometheus, loki]
+  # One-shot: replay recorded events (out/telemetry.json) into Loki. docker compose --profile replay run --rm replay
+  replay:
+    profiles: [replay]
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    command: ["--config=/cfg.yaml"]
+    volumes: ["./replay.yaml:/cfg.yaml:ro", "./out:/out:ro"]
+    depends_on: [loki]

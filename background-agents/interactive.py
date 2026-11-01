@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run one interactive Claude Code session with two background agents, in tmux, with telemetry on.
 
-Usage: python3 interactive.py <tinyledger repo> [model] [arm]
+Usage: python3 interactive.py <tinyledger repo> [model] [arm] [prompt file] [run]
 
 Interactive sessions summarize each running background agent by default, so this is the setting the
 viral report measured. The session is tagged lab.arm=<arm> (default "interactive"); analyze.py splits
@@ -29,10 +29,12 @@ def pane() -> str:
 def main() -> None:
     repo, model = sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "sonnet"
     arm = sys.argv[3] if len(sys.argv) > 3 else "interactive"
+    prompt = Path(sys.argv[4]) if len(sys.argv) > 4 else LAB / "prompts" / "interactive.txt"
+    run = sys.argv[5] if len(sys.argv) > 5 else "1"
     env = ("CLAUDE_CODE_ENABLE_TELEMETRY=1 OTEL_METRICS_EXPORTER=otlp OTEL_LOGS_EXPORTER=otlp "
            "OTEL_EXPORTER_OTLP_PROTOCOL=grpc OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14317 "
            "OTEL_METRIC_EXPORT_INTERVAL=5000 OTEL_LOGS_EXPORT_INTERVAL=2000 "
-           f"OTEL_RESOURCE_ATTRIBUTES=lab=background_agents,lab.arm={arm},lab.run=2")
+           f"OTEL_RESOURCE_ATTRIBUTES=lab=background_agents,lab.arm={arm},lab.run={run}")
     cmd = (f"cd {repo} && env {env} claude --model {model} --strict-mcp-config "
            f"--allowedTools Read,Grep,Glob,Agent,Task")
     tmux("kill-session", "-t", SESSION)
@@ -41,7 +43,7 @@ def main() -> None:
     if "trust this folder" in pane().lower():  # our own generated repo; the default option is "No, exit"
         tmux("send-keys", "-t", SESSION, "Down"); time.sleep(0.5)
         tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(6)
-    tmux("send-keys", "-t", SESSION, "-l", (LAB / "prompts" / "interactive.txt").read_text().strip())
+    tmux("send-keys", "-t", SESSION, "-l", prompt.read_text().strip())
     time.sleep(1.5)
     tmux("send-keys", "-t", SESSION, "Enter")
     time.sleep(3)

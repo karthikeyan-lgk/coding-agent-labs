@@ -31,6 +31,7 @@ exporters:
       enabled: true
   file:
     path: /out/telemetry.json
+    append: true   # a restart must not wipe recorded runs
 service:
   pipelines:
     metrics:

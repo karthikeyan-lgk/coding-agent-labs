@@ -1,0 +1,467 @@
+{
+ "uid": "claude-hidden-requests",
+ "title": "Claude Code: requests you didn't type",
+ "schemaVersion": 41,
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "arm",
+    "type": "custom",
+    "query": "interactive-long,interactive,suggest-on,suggest-off",
+    "current": {
+     "text": "interactive-long",
+     "value": "interactive-long"
+    },
+    "options": [],
+    "includeAll": false
+   }
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "bargauge",
+   "title": "Spend by query_source (Claude Code's own cost estimate)",
+   "description": "Every model request is an api_request event; query_source says who asked for it.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 12
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (query_source) (sum_over_time({service_name=\"claude-code\"} | lab_arm=~\"$arm\" | event_name=\"api_request\" | unwrap cost_usd [$__interval]))",
+     "queryType": "range",
+     "legendFormat": "{{query_source}}"
+    }
+   ],
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true,
+    "valueMode": "color",
+    "namePlacement": "top",
+    "sizing": "manual",
+    "reduceOptions": {
+     "calcs": [
+      "sum"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "legend": {
+     "showLegend": false
+    },
+    "minVizHeight": 30,
+    "maxVizHeight": 60,
+    "text": {
+     "titleSize": 22,
+     "valueSize": 24
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "decimals": 3,
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "#3ec7d4"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agent_summary"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#e8743b"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "prompt_suggestion"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#a371f7"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "repl_main_thread"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8b98a8"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "generate_session_title"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3fb950"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agent:builtin:general-purpose"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3ec7d4"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "interval": "1m",
+   "transformations": []
+  },
+  {
+   "id": 2,
+   "type": "bargauge",
+   "title": "Tokens by query_source (input + cache read + cache write)",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 12
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (query_source) (sum_over_time({service_name=\"claude-code\"} | lab_arm=~\"$arm\" | event_name=\"api_request\" | label_format read=`{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}` | unwrap read [$__interval]))",
+     "queryType": "range",
+     "legendFormat": "{{query_source}}"
+    }
+   ],
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true,
+    "valueMode": "color",
+    "namePlacement": "top",
+    "sizing": "manual",
+    "reduceOptions": {
+     "calcs": [
+      "sum"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "legend": {
+     "showLegend": false
+    },
+    "minVizHeight": 30,
+    "maxVizHeight": 60,
+    "text": {
+     "titleSize": 22,
+     "valueSize": 24
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "decimals": 0,
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "#3ec7d4"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agent_summary"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#e8743b"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "prompt_suggestion"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#a371f7"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "repl_main_thread"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8b98a8"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "generate_session_title"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3fb950"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agent:builtin:general-purpose"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3ec7d4"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "interval": "1m",
+   "transformations": []
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Spend over time by query_source",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 24,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (query_source) (sum_over_time({service_name=\"claude-code\"} | lab_arm=~\"$arm\" | event_name=\"api_request\" | unwrap cost_usd [$__interval]))",
+     "legendFormat": "{{query_source}}"
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "stacking": {
+       "mode": "normal"
+      },
+      "barWidthFactor": 0.9,
+      "lineWidth": 1
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agent_summary"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#e8743b"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "prompt_suggestion"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#a371f7"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "repl_main_thread"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8b98a8"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "generate_session_title"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3fb950"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agent:builtin:general-purpose"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3ec7d4"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "interval": "15s"
+  },
+  {
+   "id": 4,
+   "type": "logs",
+   "title": "Every status label: tokens read \u2192 tokens written",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 24,
+    "h": 9
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{service_name=\"claude-code\"} | lab_arm=~\"$arm\" | event_name=\"api_request\" | query_source=\"agent_summary\" | label_format read=`{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}` | line_format `agent_summary \u00b7 read {{ .read }} tokens \u2192 wrote {{ .output_tokens }} \u00b7 ${{ printf \"%.3f\" (divf .cost_usd 1) }}`"
+    }
+   ],
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Ascending",
+    "enableLogDetails": false,
+    "dedupStrategy": "none"
+   }
+  }
+ ]
+}
