@@ -1,0 +1,41 @@
+# Recorded 2026-11-01 12:10-12:56 IST, Claude Code 2.1.316, Claude Pro subscription login (no API key), Sonnet.
+# Demo repo: tinyledger (make_repo.py, 15 modules, 1,062 lines). Source: out/telemetry.json, api_request events
+# split by query_source (analyze.py). Costs are Claude Code's own cost_usd estimate at API prices.
+
+## Interactive session, two background agents (interactive.py, prompts/interactive.txt), default settings
+interactive (3 min, agents ran ~40 s)       774,212 tokens  $0.7255
+  agents (general-purpose)    8 req  328,685 tok (42.5%)  $0.3905 (53.8%)
+  main thread                 4 req  190,918 tok (24.7%)  $0.2371 (32.7%)
+  agent_summary               2 req  103,962 tok (13.4%)  $0.0757 (10.4%)
+  prompt_suggestion           3 req  149,363 tok (19.3%)  $0.0218 ( 3.0%)
+  generate_session_title      1 req    1,284 tok           $0.0003 (Haiku)
+interactive-long (5 min, one agent ran 2m58s) 846,051 tokens  $0.9941
+  agents (general-purpose)    9 req  365,672 tok (43.2%)  $0.6648 (66.9%)
+  main thread                 4 req  209,298 tok (24.7%)  $0.1903 (19.1%)
+  agent_summary               3 req  173,971 tok (20.6%)  $0.1265 (12.7%)
+  prompt_suggestion           2 req   95,804 tok (11.3%)  $0.0123 ( 1.2%)
+  generate_session_title      1 req    1,306 tok           $0.0002 (Haiku)
+
+## Each agent_summary request (the status label next to a running agent)
+read 51,713 tokens -> wrote 13 output tokens   (cache read 35,733, cache write 178, fresh input 15,802)  $0.0358
+read 52,249 tokens -> wrote 13                  (cache read 34,530, cache write 1,934)                    $0.0400
+read 51,643 tokens -> wrote 12                                                                            $0.0357
+read 51,676 tokens -> wrote 109                                                                           $0.0367
+read 70,652 tokens -> wrote 106                 (cache read 51,463, cache write 18,951)                   $0.0541
+=> every label reads the agent's whole transcript: 52k-71k tokens in, 12-109 out (about 4,000:1)
+=> one label per agent soon after it starts, then roughly every 90 s here (not every 30 s as reported for 2.1.312)
+
+## Headless claude -p, same kind of task, CLAUDE_CODE_AGENT_PROGRESS_SUMMARIES=1 vs unset (run.py, 2 runs each)
+summaries-off  17 req  434,381 tokens  $0.4172   no agent_summary requests
+summaries-on   17 req  435,618 tokens  $0.3332   no agent_summary requests (agents finished in under a minute)
+
+## Earlier, usage-limits lab (30-turn interactive session, no agents, 2026-10-30, Claude Code 2.1.314)
+prompt_suggestion  28 of 75 requests, 1,722,163 tokens (39.8%), $0.2414 (25.3%)
+
+## Prompt suggestions on vs off (suggest.py, 4 short turns each, Haiku, 2026-11-01 13:0x IST)
+suggest-on   (default)                              13 req  559,309 tokens  $0.0109
+  main thread 8 req 368,568 · prompt_suggestion 4 req 189,561 tok (33.9%) $0.0023 (21.3%) · session title 1 req
+suggest-off  --settings '{"promptSuggestionEnabled": false}'   9 req  369,062 tokens  $0.0078
+  main thread 8 req 367,882 · no prompt_suggestion requests · session title 1 req
+=> one suggestion per reply, each re-reading the conversation; the setting removes them (-34% tokens, -28% cost here)
+=> no setting turns agent_summary off in 2.1.316

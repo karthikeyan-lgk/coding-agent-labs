@@ -1,0 +1,43 @@
+# Claude Code metrics + events → Prometheus (for Grafana) and a raw file (for the numbers on screen).
+# Identity fields are deleted before anything is stored.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  attributes/drop-identity:
+    actions:
+      - {key: user.email, action: delete}
+      - {key: user.account_uuid, action: delete}
+      - {key: user.id, action: delete}
+      - {key: user.account_id, action: delete}
+      - {key: session.id, action: delete}
+      - {key: organization.id, action: delete}
+  resource/drop-identity:
+    attributes:
+      - {key: user.email, action: delete}
+      - {key: user.account_uuid, action: delete}
+      - {key: user.id, action: delete}
+      - {key: user.account_id, action: delete}
+      - {key: session.id, action: delete}
+      - {key: organization.id, action: delete}
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+  file:
+    path: /out/telemetry.json
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [attributes/drop-identity, resource/drop-identity]
+      exporters: [prometheus, file]
+    logs:
+      receivers: [otlp]
+      processors: [attributes/drop-identity, resource/drop-identity]
+      exporters: [file]
