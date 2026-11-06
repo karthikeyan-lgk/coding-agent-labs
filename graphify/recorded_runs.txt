@@ -1,0 +1,39 @@
+Graphify lab, recorded 2026-11-05. Claude Code 2.1.318, graphifyy 0.9.102, Sonnet (claude-sonnet-5-5), Linux.
+httpx  b5addb64f016: 60 .py files.   django ca3f31b255de: 2,943 .py files.
+
+Build, code only (`graphify update .`, no LLM):
+httpx    2.8 s    127 MB RAM     2,339 nodes    4,537 edges    graphify-out 6.8 MB
+django   85.1 s   1.7 GB RAM    55,311 nodes  131,828 edges    graphify-out 166 MB
+
+Graphify's own `graphify benchmark` (estimate: chars / 4, vs reading the whole corpus, 5 built-in questions):
+httpx    ~155,933 tokens naive, ~1,633 per query    95.5x
+django   ~3,687,400 tokens naive, ~1,624 per query  2,270.6x
+Query cost is about the same on both, so the multiple tracks corpus size (query budget default 2,000 tokens).
+
+Pilot, ONE run per arm, httpx question h1, not a result (turns / secs / cost_usd / input + cache_read + cache_write + output):
+off   3 / 18.6 / 0.0715 / 6 + 54,108 + 14,923 + 642 = 69,679
+on    3 / 23.5 / 0.0827 / 6 + 57,964 + 17,996 + 488 = 76,454
+Both answers correct. Off ran first, so cache warmth may differ.
+
+Full run, 80 fresh one-question sessions (10 questions x 2 repos x 2 arms x 2 passes, arm order flipped on pass 2), Sonnet, 0 errors, $3.64 at API prices.
+httpx on 2.1.318 (11-05). django on 2.1.319 (11-06), all 40 re-run after the 11-05 run hit the 5-hour limit; compare on/off within a repo only.
+Tokens = input + cache read + cache write + output, mean per session.
+          tokens off / on            cost off / on          median secs off / on
+httpx     57,070 / 66,026  +15.7%    $0.846 / $0.870 +2.8%   10.8 / 11.2
+django    56,341 / 83,710  +48.6%    $0.825 / $1.097 +33.0%  10.4 / 22.6
+both      56,705 / 74,868  +32.0%    $1.671 / $1.967 +17.7%  10.7 / 17.3
+Graphify used fewer tokens on 1 of 20 questions (h5, 0.95x). Worst d5, 3.32x (23,032 vs 76,566).
+Every on session ran `graphify query` (median result ~4,300 chars). Off sessions never did. Install adds ~860 tokens to the first request. Median turns 2 off, 3 on.
+Answers: 39 of 40 off and 40 of 40 on correct on the answer keys. The 4 key misses were read by hand: three h1 misses are correct (say "_same_origin"/"same-origin"), one off h5 is wrong (names send(); it is _send_handling_auth). Answers that hit their keys were not read by hand.
+Scope: one question per fresh session. Not tested here: other models, repos other than these two. Long sessions: see below.
+
+Long-session test, 2026-11-06, Claude Code 2.1.319, Sonnet: all 10 questions in ONE session (--resume), 2 repos x 2 arms x 2 passes = 8 sessions, 80 calls, 0 errors. Means of 2 sessions per arm.
+          tokens per session off / on       session cost off / on   cost without Q1 off / on   seconds off / on
+httpx     601,956 / 699,434  +16.2%         $0.178 / $0.162         $0.130 / $0.142 (+9%)      112 / 123
+django    647,732 / 687,058   +6.1%         $0.170 / $0.159         $0.157 / $0.147 (-6%)      113 / 147
+Q1 is left out for cost because a cold cache swings it ($0.009-$0.075). total_cost_usd is cumulative on --resume, so a session's cost is its last value.
+Token ranges did not overlap (httpx off 578,549-625,364, on 658,106-740,762; django off 642,051-653,412, on 662,785-711,332). Two sessions per arm: cost differences are not a result.
+Answers: 38 of 40 off, 39 of 40 on. All 3 misses are h5, read by hand and wrong: they name send(), the call at line 942 is in _send_handling_auth (defined line 930).
+
+Sources for Graphify's claims: 71.5x, 5.4x, ~1x are in docs/how-it-works.md and worked/karpathy-repos/README.md, not the README. "80% fewer tokens" is Graphify Cloud, a different product, not tested here. The hook reminder in graphify/cli.py says a query is "usually in far fewer tokens than grepping raw files".
+d5 caveat: both plain one-question d5 sessions ended in 1 turn with no tool, so Claude answered from what it already knew. Without d5, Django one-question tokens are 60,042 off, 84,503 on, +40.7%. No other session did this. Both repos are public.
