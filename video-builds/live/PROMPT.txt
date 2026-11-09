@@ -1,0 +1,1 @@
+Build the vertical Short described in BRIEF.md with raea (already on PATH, offline). The assets are in assets/. Render it to out.mp4, then pull out frames at the times in the brief and look at them, fix what's wrong and re-render. When everything checks out, end your last message with DONE- and then the number 42 straight after the dash.

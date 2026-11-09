@@ -1,0 +1,356 @@
+[
+  {
+    "id": "w0",
+    "text": "Your",
+    "start": 0.16,
+    "end": 0.4
+  },
+  {
+    "id": "w1",
+    "text": "first",
+    "start": 0.4,
+    "end": 0.64
+  },
+  {
+    "id": "w2",
+    "text": "Claude",
+    "start": 0.64,
+    "end": 1.28
+  },
+  {
+    "id": "w3",
+    "text": "Code",
+    "start": 1.28,
+    "end": 1.6
+  },
+  {
+    "id": "w4",
+    "text": "message",
+    "start": 1.6,
+    "end": 2
+  },
+  {
+    "id": "w5",
+    "text": "costs",
+    "start": 2,
+    "end": 2.56
+  },
+  {
+    "id": "w6",
+    "text": "nine",
+    "start": 2.56,
+    "end": 2.96
+  },
+  {
+    "id": "w7",
+    "text": "times",
+    "start": 2.96,
+    "end": 3.36
+  },
+  {
+    "id": "w8",
+    "text": "the",
+    "start": 3.36,
+    "end": 3.6
+  },
+  {
+    "id": "w9",
+    "text": "rest.",
+    "start": 3.6,
+    "end": 4.16
+  },
+  {
+    "id": "w10",
+    "text": "Six",
+    "start": 4.16,
+    "end": 4.48
+  },
+  {
+    "id": "w11",
+    "text": "and",
+    "start": 4.48,
+    "end": 4.64
+  },
+  {
+    "id": "w12",
+    "text": "a",
+    "start": 4.64,
+    "end": 4.72
+  },
+  {
+    "id": "w13",
+    "text": "half",
+    "start": 4.72,
+    "end": 4.96
+  },
+  {
+    "id": "w14",
+    "text": "cents,",
+    "start": 4.96,
+    "end": 5.36
+  },
+  {
+    "id": "w15",
+    "text": "then",
+    "start": 5.36,
+    "end": 5.68
+  },
+  {
+    "id": "w16",
+    "text": "less",
+    "start": 5.68,
+    "end": 5.92
+  },
+  {
+    "id": "w17",
+    "text": "than",
+    "start": 5.92,
+    "end": 6.16
+  },
+  {
+    "id": "w18",
+    "text": "one.",
+    "start": 6.16,
+    "end": 6.88
+  },
+  {
+    "id": "w19",
+    "text": "Why?",
+    "start": 6.88,
+    "end": 7.68
+  },
+  {
+    "id": "w20",
+    "text": "The",
+    "start": 7.68,
+    "end": 7.92
+  },
+  {
+    "id": "w21",
+    "text": "first",
+    "start": 7.92,
+    "end": 8.16
+  },
+  {
+    "id": "w22",
+    "text": "one",
+    "start": 8.16,
+    "end": 8.48
+  },
+  {
+    "id": "w23",
+    "text": "writes",
+    "start": 8.48,
+    "end": 9.04
+  },
+  {
+    "id": "w24",
+    "text": "16,000",
+    "start": 9.04,
+    "end": 10.24
+  },
+  {
+    "id": "w25",
+    "text": "tokens",
+    "start": 10.24,
+    "end": 10.64
+  },
+  {
+    "id": "w26",
+    "text": "of",
+    "start": 10.64,
+    "end": 10.8
+  },
+  {
+    "id": "w27",
+    "text": "setup",
+    "start": 10.8,
+    "end": 11.28
+  },
+  {
+    "id": "w28",
+    "text": "into",
+    "start": 11.44,
+    "end": 11.68
+  },
+  {
+    "id": "w29",
+    "text": "the",
+    "start": 11.68,
+    "end": 11.84
+  },
+  {
+    "id": "w30",
+    "text": "cache.",
+    "start": 11.84,
+    "end": 12.48
+  },
+  {
+    "id": "w31",
+    "text": "That's",
+    "start": 12.48,
+    "end": 12.96
+  },
+  {
+    "id": "w32",
+    "text": "the",
+    "start": 12.96,
+    "end": 13.2
+  },
+  {
+    "id": "w33",
+    "text": "joining",
+    "start": 13.2,
+    "end": 13.76
+  },
+  {
+    "id": "w34",
+    "text": "fee.",
+    "start": 13.76,
+    "end": 14.32
+  },
+  {
+    "id": "w35",
+    "text": "Every",
+    "start": 14.32,
+    "end": 14.72
+  },
+  {
+    "id": "w36",
+    "text": "message",
+    "start": 14.72,
+    "end": 15.12
+  },
+  {
+    "id": "w37",
+    "text": "after",
+    "start": 15.12,
+    "end": 15.52
+  },
+  {
+    "id": "w38",
+    "text": "just",
+    "start": 15.52,
+    "end": 15.76
+  },
+  {
+    "id": "w39",
+    "text": "reads",
+    "start": 15.76,
+    "end": 16.16
+  },
+  {
+    "id": "w40",
+    "text": "it",
+    "start": 16.16,
+    "end": 16.32
+  },
+  {
+    "id": "w41",
+    "text": "back.",
+    "start": 16.32,
+    "end": 16.8
+  },
+  {
+    "id": "w42",
+    "text": "So",
+    "start": 16.8,
+    "end": 17.04
+  },
+  {
+    "id": "w43",
+    "text": "stop",
+    "start": 17.2,
+    "end": 17.44
+  },
+  {
+    "id": "w44",
+    "text": "opening",
+    "start": 17.6,
+    "end": 18
+  },
+  {
+    "id": "w45",
+    "text": "a",
+    "start": 18,
+    "end": 18.16
+  },
+  {
+    "id": "w46",
+    "text": "fresh",
+    "start": 18.16,
+    "end": 18.48
+  },
+  {
+    "id": "w47",
+    "text": "session",
+    "start": 18.48,
+    "end": 18.88
+  },
+  {
+    "id": "w48",
+    "text": "for",
+    "start": 18.88,
+    "end": 19.12
+  },
+  {
+    "id": "w49",
+    "text": "every",
+    "start": 19.12,
+    "end": 19.52
+  },
+  {
+    "id": "w50",
+    "text": "tiny",
+    "start": 19.52,
+    "end": 20
+  },
+  {
+    "id": "w51",
+    "text": "question.",
+    "start": 20,
+    "end": 20.56
+  },
+  {
+    "id": "w52",
+    "text": "How",
+    "start": 20.56,
+    "end": 20.72
+  },
+  {
+    "id": "w53",
+    "text": "many",
+    "start": 20.72,
+    "end": 21.04
+  },
+  {
+    "id": "w54",
+    "text": "do",
+    "start": 21.04,
+    "end": 21.12
+  },
+  {
+    "id": "w55",
+    "text": "you",
+    "start": 21.12,
+    "end": 21.28
+  },
+  {
+    "id": "w56",
+    "text": "open",
+    "start": 21.28,
+    "end": 21.52
+  },
+  {
+    "id": "w57",
+    "text": "a",
+    "start": 21.52,
+    "end": 21.68
+  },
+  {
+    "id": "w58",
+    "text": "day?",
+    "start": 21.68,
+    "end": 22
+  }
+]

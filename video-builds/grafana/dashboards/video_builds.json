@@ -1,0 +1,139 @@
+{
+ "title": "Claude Code: same Short, three tools",
+ "uid": "video-builds",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "schemaVersion": 39,
+ "refresh": "10s",
+ "panels": [
+  {
+   "id": 1,
+   "type": "bargauge",
+   "title": "Tokens per build (same Short, three tools)",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (lab_tool, lab_run) (max_over_time(claude_code_token_usage_tokens_total{lab_tool!=\"smoke\"}[$__range]))",
+     "legendFormat": "{{lab_tool}} run {{lab_run}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true
+   }
+  },
+  {
+   "id": 2,
+   "type": "bargauge",
+   "title": "Cost per build at API prices",
+   "gridPos": {
+    "x": 0,
+    "y": 9,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (lab_tool, lab_run) (max_over_time(claude_code_cost_usage_USD_total{lab_tool!=\"smoke\"}[$__range]))",
+     "legendFormat": "{{lab_tool}} run {{lab_run}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD"
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true
+   }
+  },
+  {
+   "id": 3,
+   "type": "bargauge",
+   "title": "Where the tokens went",
+   "gridPos": {
+    "x": 12,
+    "y": 9,
+    "w": 12,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (lab_tool, type) (max_over_time(claude_code_token_usage_tokens_total{lab_tool!=\"smoke\"}[$__range]))",
+     "legendFormat": "{{lab_tool}} \u00b7 {{type}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true
+   }
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "Tokens climbing during each build",
+   "gridPos": {
+    "x": 0,
+    "y": 18,
+    "w": 24,
+    "h": 9
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prom"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (lab_tool, lab_run) (claude_code_token_usage_tokens_total{lab_tool!=\"smoke\"})",
+     "legendFormat": "{{lab_tool}} run {{lab_run}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   }
+  }
+ ]
+}
