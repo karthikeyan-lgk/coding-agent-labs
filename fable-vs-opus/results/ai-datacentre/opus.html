@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inside an AI Data Centre</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#04060c;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh;cursor:pointer}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+/* =====================================================================
+   Inside an AI Data Centre — a self-playing animated tour.
+   Everything is drawn on one canvas in a 1600x900 virtual space.
+   Keys: ← / → change chapter, Space pause. Click = next chapter.
+   ===================================================================== */
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const W = 1600, H = 900;
+let S = 1, OX = 0, OY = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(innerWidth * DPR); cv.height = Math.round(innerHeight * DPR);
+  S = Math.min(innerWidth / W, innerHeight / H);
+  OX = (innerWidth - W * S) / 2; OY = (innerHeight - H * S) / 2;
+}
+addEventListener('resize', resize); resize();
+
+const FONT = '"Inter","Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif';
+const MONO = '"JetBrains Mono","SFMono-Regular",Menlo,Consolas,monospace';
+
+/* ---------- helpers ---------- */
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => (t = clamp(t), t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+function hash(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+const fmt = n => Math.floor(n).toLocaleString('en-US');
+
+function rr(x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); }
+function box(x, y, w, h, r, fill, stroke, lw) {
+  rr(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+}
+function txt(s, x, y, size = 16, color = '#dfe7f5', align = 'left', weight = 500, font = FONT) {
+  ctx.font = `${weight} ${size}px ${font}`; ctx.fillStyle = color;
+  ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+}
+function glow(c, b) { ctx.shadowColor = c; ctx.shadowBlur = b; }
+function noGlow() { ctx.shadowBlur = 0; }
+function dot(x, y, r, c) { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fillStyle = c; ctx.fill(); }
+function line(pts, color, w) {
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+}
+function poly(ps, fill, stroke) {
+  ctx.beginPath(); ctx.moveTo(ps[0][0], ps[0][1]);
+  for (let i = 1; i < ps.length; i++) ctx.lineTo(ps[i][0], ps[i][1]);
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+}
+function wrap(s, maxW, size, weight = 500) {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  const words = s.split(' '), lines = []; let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function Path(pts) {
+  const L = [0];
+  for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  return {
+    pts, len: L[L.length - 1],
+    at(d) {
+      d = clamp(d, 0, this.len); let i = 1;
+      while (i < L.length - 1 && L[i] < d) i++;
+      const a = pts[i - 1], b = pts[i], f = (d - L[i - 1]) / ((L[i] - L[i - 1]) || 1);
+      return [lerp(a[0], b[0], f), lerp(a[1], b[1], f)];
+    }
+  };
+}
+function flow(path, t, n, speed, r, color, blur = 8) {
+  glow(color, blur);
+  for (let i = 0; i < n; i++) {
+    const d = ((t * speed + i * path.len / n) % path.len + path.len) % path.len;
+    const p = path.at(d); dot(p[0], p[1], r, color);
+  }
+  noGlow();
+}
+function pipe(pts, col, t, speed = 40, w = 8) {
+  line(pts, '#0b111c', w + 6); line(pts, col, w);
+  ctx.save(); ctx.setLineDash([w * .8, w * 1.8]); ctx.lineDashOffset = -t * speed;
+  line(pts, 'rgba(255,255,255,.5)', Math.max(1.5, w * .35)); ctx.restore();
+}
+/* Callout: dot at (x,y), leader to (lx,ly), title/subtitle beside it. */
+function callout(x, y, lx, ly, title, sub, a, align, color = '#7fd4ff') {
+  if (a <= 0) return;
+  align = align || (lx < x ? 'right' : 'left');
+  ctx.save(); ctx.globalAlpha *= a;
+  ctx.strokeStyle = color; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(lerp(x, lx, ease(a)), lerp(y, ly, ease(a))); ctx.stroke();
+  glow(color, 10); dot(x, y, 3.5, color); noGlow();
+  const dx = align === 'left' ? 8 : -8;
+  txt(title, lx + dx, ly - (sub ? 9 : 0), 16, '#ffffff', align, 650);
+  if (sub) txt(sub, lx + dx, ly + 11, 13, '#9fb3cc', align, 400);
+  ctx.restore();
+}
+/* soft round sprite for smoke / heat plumes */
+const PUFF = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,150,90,1)'); gr.addColorStop(.4, 'rgba(255,130,80,.45)'); gr.addColorStop(1, 'rgba(255,120,70,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return c;
+})();
+function puff(x, y, r) { ctx.drawImage(PUFF, x - r, y - r, r * 2, r * 2); }
+function bg(top = '#060a14', bottom = '#0b1426') {
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, bottom);
+  ctx.fillStyle = g; ctx.fillRect(-300, -300, W + 600, H + 600);
+  // faint blueprint grid
+  ctx.strokeStyle = 'rgba(90,140,220,.05)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= W; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = 0; y <= H; y += 40) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+}
+
+/* =====================================================================
+   SCENE 1 — THE CAMPUS
+   ===================================================================== */
+const STARS = [...Array(170)].map((_, i) => ({ x: hash(i) * 1900 - 150, y: hash(i + 500) * 560 - 80, r: hash(i + 900) * 1.3 + .3, p: hash(i + 1300) * 6 }));
+const PYL = [-140, 60, 250], PB = 700, PH = 210;
+const WATT = [[-34, 14], [34, 14], [-24, 44], [24, 44]];
+function sagCurve(a, b, sag, n = 24) {
+  const out = [];
+  for (let i = 0; i <= n; i++) { const f = i / n; out.push([lerp(a[0], b[0], f), lerp(a[1], b[1], f) + sag * 4 * f * (1 - f)]); }
+  return out;
+}
+const WIRES = WATT.map((o, wi) => {
+  let pts = [];
+  for (let p = 0; p < PYL.length - 1; p++) {
+    const c = sagCurve([PYL[p] + o[0], PB - PH + o[1]], [PYL[p + 1] + o[0], PB - PH + o[1]], 26);
+    if (p > 0) c.shift(); pts = pts.concat(c);
+  }
+  const c = sagCurve(pts[pts.length - 1], [452 + wi * 16, 604], 14); c.shift();
+  return Path(pts.concat(c));
+});
+const SUBCABLE = Path([[560, 690], [560, 716], [700, 716], [700, 700]]);
+const FIBRE = Path([[1700, 772], [1350, 772], [1350, 700]]);
+
+function pylon(x, t) {
+  const top = PB - PH;
+  ctx.strokeStyle = '#3b4a63'; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(x - 22, PB); ctx.lineTo(x - 5, top); ctx.lineTo(x + 5, top); ctx.lineTo(x + 22, PB);
+  for (let k = 0; k < 6; k++) {
+    const y1 = PB - k * PH / 6, y2 = PB - (k + 1) * PH / 6, w1 = lerp(22, 5, k / 6), w2 = lerp(22, 5, (k + 1) / 6);
+    ctx.moveTo(x - w1, y1); ctx.lineTo(x + w2, y2); ctx.moveTo(x + w1, y1); ctx.lineTo(x - w2, y2);
+  }
+  ctx.moveTo(x - 38, top + 14); ctx.lineTo(x + 38, top + 14);
+  ctx.moveTo(x - 28, top + 44); ctx.lineTo(x + 28, top + 44); ctx.stroke();
+  dot(x, top - 3, 2.5, Math.sin(t * 3 + x) > 0 ? '#ff4040' : '#3a1010');
+}
+
+function sCampus(t, D) {
+  ctx.save();
+  const z = 1 + .07 * ease(t / D);
+  ctx.translate(800, 560); ctx.scale(z, z); ctx.translate(-800, -560);
+  // sky
+  let g = ctx.createLinearGradient(0, -100, 0, 700);
+  g.addColorStop(0, '#02040a'); g.addColorStop(.7, '#0a1530'); g.addColorStop(1, '#1a2448');
+  ctx.fillStyle = g; ctx.fillRect(-300, -300, 2200, 1000);
+  for (const s of STARS) { ctx.globalAlpha = .35 + .35 * Math.sin(t * 1.5 + s.p); dot(s.x, s.y, s.r, '#cfe0ff'); }
+  ctx.globalAlpha = 1;
+  // distant hills + city glow
+  g = ctx.createRadialGradient(1500, 700, 10, 1500, 700, 500);
+  g.addColorStop(0, 'rgba(255,150,80,.12)'); g.addColorStop(1, 'rgba(255,150,80,0)');
+  ctx.fillStyle = g; ctx.fillRect(900, 300, 1000, 400);
+  ctx.beginPath(); ctx.moveTo(-300, 700);
+  for (let x = -300; x <= 1900; x += 20) ctx.lineTo(x, 660 - 25 * Math.sin(x * .004) - 12 * Math.sin(x * .013 + 1));
+  ctx.lineTo(1900, 700); ctx.closePath(); ctx.fillStyle = '#081022'; ctx.fill();
+  // ground
+  g = ctx.createLinearGradient(0, 700, 0, 900); g.addColorStop(0, '#0d1526'); g.addColorStop(1, '#04070d');
+  ctx.fillStyle = g; ctx.fillRect(-300, 700, 2200, 400);
+  ctx.fillStyle = '#1a2438'; ctx.fillRect(-300, 698, 2200, 3);
+
+  // underground cables
+  line(SUBCABLE.pts, 'rgba(255,170,60,.25)', 4); flow(SUBCABLE, t, 6, 60, 2, '#ffb347');
+  line(FIBRE.pts, 'rgba(80,220,255,.25)', 3); flow(FIBRE, t, 9, 220, 2, '#6ff', 12);
+
+  // pylons & wires
+  for (const x of PYL) pylon(x, t);
+  for (const w of WIRES) line(w.pts, '#5a6a84', 1.2);
+  for (const w of WIRES) flow(w, t, 14, 140, 1.8, '#ffe27a', 10);
+
+  // substation
+  ctx.strokeStyle = '#3d4a60'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(440, 700); ctx.lineTo(440, 598); ctx.lineTo(520, 598); ctx.lineTo(520, 700); ctx.stroke();
+  ctx.strokeStyle = '#2b3547'; ctx.lineWidth = 1;
+  for (let x = 410; x <= 620; x += 8) { ctx.beginPath(); ctx.moveTo(x, 700); ctx.lineTo(x, 672); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(410, 672); ctx.lineTo(620, 672); ctx.stroke();
+  for (const tx of [470, 545]) {
+    box(tx, 640, 52, 58, 3, '#2a3446', '#46546e');
+    ctx.strokeStyle = '#1b2230'; for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(tx + 6 + k * 8, 646); ctx.lineTo(tx + 6 + k * 8, 692); ctx.stroke(); }
+    for (let k = 0; k < 3; k++) box(tx + 9 + k * 14, 626, 6, 14, 2, '#8a9bb5');
+    glow('#ffb347', 20); dot(tx + 26, 668, 2 + Math.sin(t * 10) * .5, 'rgba(255,190,90,.8)'); noGlow();
+  }
+
+  // building
+  const bx = 640, by = 440, bw = 800, bh = 260;
+  g = ctx.createLinearGradient(0, by, 0, by + bh); g.addColorStop(0, '#232d42'); g.addColorStop(1, '#151c2b');
+  ctx.fillStyle = g; ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  for (let x = bx; x < bx + bw; x += 40) { ctx.beginPath(); ctx.moveTo(x, by); ctx.lineTo(x, by + bh); ctx.stroke(); }
+  ctx.fillStyle = '#10161f'; ctx.fillRect(bx, by + 20, bw, 22);
+  for (let x = bx + 4; x < bx + bw; x += 8) { ctx.fillStyle = '#1d2636'; ctx.fillRect(x, by + 22, 4, 18); }
+  for (const dx of [80, 360, 660]) { box(bx + dx, by + bh - 70, 70, 70, 2, '#1b2333', '#2b3650'); dot(bx + dx + 35, by + bh - 80, 3, '#ffd88a'); }
+  // cutaway interior
+  const ca = ease(seg(t, 6, 8));
+  if (ca > 0) {
+    ctx.save(); ctx.globalAlpha = ca;
+    const ix = 660, iy = 500, iw = 760, ih = 190;
+    ctx.fillStyle = '#050911'; ctx.fillRect(ix, iy, iw, ih);
+    pipe([[ix, iy + 18], [ix + iw, iy + 18]], '#2f8cff', t, 50, 4);
+    pipe([[ix + iw, iy + 30], [ix, iy + 30]], '#ff5a3c', t, 50, 4);
+    ctx.fillStyle = '#c9a227'; ctx.fillRect(ix, iy + 40, iw, 3);
+    for (let i = 0; i < 31; i++) {
+      const rx = ix + 12 + i * 24.2;
+      box(rx, iy + 56, 19, 124, 2, '#141c2a', '#26324a');
+      for (let k = 0; k < 9; k++) {
+        const on = hash(i * 31 + k + Math.floor(t * 4 + hash(i + k) * 4)) > .35;
+        dot(rx + 5, iy + 66 + k * 12.5, 1.4, on ? (k % 3 ? '#38f2a0' : '#52b8ff') : '#13312a');
+      }
+    }
+    const gg = ctx.createLinearGradient(0, iy, 0, iy + ih); gg.addColorStop(0, 'rgba(80,160,255,.08)'); gg.addColorStop(1, 'rgba(80,160,255,0)');
+    ctx.fillStyle = gg; ctx.fillRect(ix, iy, iw, ih);
+    ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]); ctx.strokeRect(ix, iy, iw, ih); ctx.setLineDash([]);
+    ctx.restore();
+  }
+  // rooftop dry coolers
+  for (let i = 0; i < 10; i++) {
+    const ux = 668 + i * 76;
+    box(ux, 410, 66, 30, 2, '#2c3850', '#3e4c68');
+    for (let f = 0; f < 2; f++) {
+      const fx = ux + 17 + f * 32, fy = 410;
+      ctx.beginPath(); ctx.ellipse(fx, fy, 13, 4, 0, 0, 6.29); ctx.fillStyle = '#0f1520'; ctx.fill();
+      ctx.strokeStyle = '#7d8fae'; ctx.lineWidth = 1.5;
+      for (let b = 0; b < 3; b++) {
+        const an = t * 9 + b * 2.094 + i;
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(an) * 12, fy + Math.sin(an) * 3.6); ctx.stroke();
+      }
+    }
+  }
+  // warm plume
+  for (let i = 0; i < 90; i++) {
+    const ph = (t * .12 + hash(i)) % 1;
+    const x = 680 + hash(i + 3) * 740 + Math.sin(ph * 6 + i) * 18 + ph * 40;
+    const y = 404 - ph * 280;
+    ctx.globalAlpha = (1 - ph) * .16 * (ph < .1 ? ph * 10 : 1);
+    ctx.globalCompositeOperation = 'lighter';
+    puff(x, y, 10 + ph * 34);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  // generators
+  for (let i = 0; i < 3; i++) {
+    const gx = 1462 + i * 44;
+    box(gx, 648, 38, 52, 2, '#2f3a2c', '#4b5a44');
+    ctx.fillStyle = '#1b2219'; for (let k = 0; k < 5; k++) ctx.fillRect(gx + 5, 656 + k * 8, 28, 3);
+    ctx.fillStyle = '#4b5a44'; ctx.fillRect(gx + 28, 636, 5, 12);
+  }
+  // callouts
+  callout(505, 660, 380, 752, 'Substation', '132 kV from the grid → 33 kV', seg(t, 1.5, 2.3), 'right', '#ffd36a');
+  callout(905, 404, 905, 330, 'Dry coolers', 'dump heat into the night air', seg(t, 3, 3.8), 'left', '#ff9a6a');
+  callout(1505, 648, 1540, 590, 'Backup generators', 'take over in seconds', seg(t, 4.5, 5.3), 'right', '#9fe07a');
+  callout(1430, 772, 1540, 748, 'Fibre to the internet', 'terabits per second', seg(t, 6, 6.8), 'right', '#6ff');
+  callout(1000, 600, 1110, 470, 'Data halls', 'tens of thousands of GPUs', seg(t, 8.5, 9.3), 'left', '#7fd4ff');
+  ctx.restore();
+
+  // title card
+  const ta = seg(t, .2, 1.2) * (1 - seg(t, 3.6, 4.8));
+  if (ta > 0) {
+    ctx.save(); ctx.globalAlpha = ta;
+    glow('rgba(120,200,255,.6)', 30);
+    txt('INSIDE AN AI DATA CENTRE', 800, 230 - (1 - ta) * 10, 68, '#ffffff', 'center', 800);
+    noGlow();
+    txt('From the power grid to a single multiplication — a self-playing tour', 800, 290, 21, '#a9c3e6', 'center', 400);
+    ctx.restore();
+  }
+}
+
+/* =====================================================================
+   SCENE 2 — POWER
+   ===================================================================== */
+const PN = [
+  { x: 170, y: 250, name: 'Grid', v: '132 kV AC', ic: 'grid' },
+  { x: 550, y: 250, name: 'Substation', v: '→ 33 kV', ic: 'tx' },
+  { x: 930, y: 250, name: 'Switchgear', v: '33 kV', ic: 'sw' },
+  { x: 1310, y: 250, name: 'UPS', v: 'batteries', ic: 'ups' },
+  { x: 1310, y: 560, name: 'Transformer', v: '→ 415 V AC', ic: 'tx' },
+  { x: 930, y: 560, name: 'Busway / PDU', v: '415 V AC', ic: 'bus' },
+  { x: 550, y: 560, name: 'Rack power shelf', v: '→ 50 V DC', ic: 'tx' },
+  { x: 170, y: 560, name: 'GPU regulators', v: '→ ~0.8 V', ic: 'chip' },
+];
+const PSEG = [
+  [[265, 250], [455, 250]], [[645, 250], [835, 250]], [[1025, 250], [1215, 250]],
+  [[1310, 305], [1310, 505]], [[1215, 560], [1025, 560]], [[835, 560], [645, 560]], [[455, 560], [265, 560]],
+].map(Path);
+const PW = [2, 2.5, 3, 4, 6, 8, 11], PR = [1.6, 1.8, 2, 2.4, 3, 3.4, 4], PNUM = [6, 6, 6, 9, 10, 13, 16];
+const PCOL = ['#bfefff', '#bfefff', '#d6f0ff', '#ffe27a', '#ffd24a', '#ffb13b', '#ff8a2a'];
+const GENPATH = Path([[1120, 373], [1120, 250]]);
+
+function pIcon(n, cx, cy, t, s) {
+  ctx.strokeStyle = '#8fb3d9'; ctx.lineWidth = 1.6;
+  if (n.ic === 'grid') {
+    ctx.beginPath(); ctx.moveTo(cx - 10, cy + 10); ctx.lineTo(cx - 2, cy - 12); ctx.lineTo(cx + 2, cy - 12); ctx.lineTo(cx + 10, cy + 10);
+    ctx.moveTo(cx - 14, cy - 7); ctx.lineTo(cx + 14, cy - 7); ctx.stroke();
+  } else if (n.ic === 'tx') {
+    ctx.beginPath(); ctx.arc(cx - 6, cy, 9, 0, 6.29); ctx.stroke(); ctx.beginPath(); ctx.arc(cx + 6, cy, 9, 0, 6.29); ctx.stroke();
+  } else if (n.ic === 'sw') {
+    ctx.beginPath(); ctx.moveTo(cx - 18, cy); ctx.lineTo(cx - 6, cy); ctx.lineTo(cx + 8, cy - 8); ctx.moveTo(cx + 8, cy); ctx.lineTo(cx + 18, cy); ctx.stroke();
+    dot(cx - 6, cy, 2.5, '#8fb3d9'); dot(cx + 8, cy, 2.5, '#8fb3d9');
+  } else if (n.ic === 'ups') {
+    box(cx - 50, cy - 8, 92, 16, 3, '#0b1220', '#8fb3d9'); ctx.fillStyle = '#8fb3d9'; ctx.fillRect(cx + 43, cy - 4, 4, 8);
+    const lv = s.batt; ctx.fillStyle = s.onBatt ? '#ffb13b' : '#38f2a0'; ctx.fillRect(cx - 47, cy - 5, 86 * lv, 10);
+  } else if (n.ic === 'bus') {
+    for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(cx - 20, cy + k * 6); ctx.lineTo(cx + 20, cy + k * 6); ctx.stroke(); }
+  } else if (n.ic === 'chip') {
+    ctx.strokeRect(cx - 10, cy - 10, 20, 20);
+    for (let k = -1; k <= 1; k++) {
+      ctx.beginPath(); ctx.moveTo(cx - 15, cy + k * 6); ctx.lineTo(cx - 10, cy + k * 6); ctx.moveTo(cx + 10, cy + k * 6); ctx.lineTo(cx + 15, cy + k * 6);
+      ctx.moveTo(cx + k * 6, cy - 15); ctx.lineTo(cx + k * 6, cy - 10); ctx.moveTo(cx + k * 6, cy + 10); ctx.lineTo(cx + k * 6, cy + 15); ctx.stroke();
+    }
+    glow('#ff8a2a', 16); dot(cx, cy, 4, 'rgba(255,140,50,.9)'); noGlow();
+  }
+}
+function sPower(t, D) {
+  bg();
+  const gridOn = !(t > 8.5 && t < 12.5), genOn = t > 10.3 && t < 13.8, genSpin = t > 9.6 && t < 14.2;
+  const onBatt = !gridOn && !genOn;
+  const batt = t < 8.5 ? 1 : t < 10.3 ? 1 - .28 * seg(t, 8.5, 10.3) : .72 + .28 * seg(t, 10.3, 14);
+  const st = { batt, onBatt };
+  const rev = i => ease(seg(t, .3 + i * .45, .8 + i * .45));
+  // segments
+  for (let i = 0; i < 7; i++) {
+    const a = rev(i + 1); if (a <= 0) continue;
+    const live = i < 2 ? gridOn : i === 2 ? (gridOn || genOn) : true;
+    ctx.save(); ctx.globalAlpha = a;
+    line(PSEG[i].pts, live ? 'rgba(255,220,120,.18)' : 'rgba(120,130,150,.15)', PW[i] + 6);
+    line(PSEG[i].pts, live ? PCOL[i] : '#3a4358', PW[i] * .5);
+    if (live) flow(PSEG[i], t, PNUM[i], 90, PR[i], PCOL[i], 12);
+    ctx.restore();
+  }
+  // generator
+  const ga = ease(seg(t, 4, 5));
+  if (ga > 0) {
+    ctx.save(); ctx.globalAlpha = ga;
+    line(GENPATH.pts, genOn ? 'rgba(160,240,120,.25)' : 'rgba(120,130,150,.15)', 8);
+    line(GENPATH.pts, genOn ? '#a6f07a' : '#3a4358', 2);
+    if (genOn) flow(GENPATH, t, 4, 90, 2.2, '#a6f07a', 10);
+    box(1035, 373, 170, 64, 10, '#0f1a14', genOn ? '#a6f07a' : '#36503a', 1.5);
+    txt('Backup generators', 1120, 392, 14, '#dff5d6', 'center', 650);
+    // fan
+    const fx = 1060, fy = 415, an = genSpin ? t * 14 : 0;
+    ctx.strokeStyle = '#a6f07a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(fx, fy, 9, 0, 6.29); ctx.stroke();
+    for (let b = 0; b < 3; b++) { ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(an + b * 2.09) * 8, fy + Math.sin(an + b * 2.09) * 8); ctx.stroke(); }
+    txt(genOn ? 'RUNNING' : genSpin ? 'STARTING…' : 'standby', 1125, 418, 13, genOn ? '#a6f07a' : genSpin ? '#ffd24a' : '#6b7a90', 'center', 700, MONO);
+    if (genSpin) for (let i = 0; i < 12; i++) { const ph = (t * .6 + hash(i)) % 1; ctx.globalAlpha = ga * (1 - ph) * .3; dot(1190 + Math.sin(i + ph * 4) * 6, 373 - ph * 60, 3 + ph * 9, '#8a96a8'); }
+    ctx.restore();
+  }
+  // nodes
+  PN.forEach((n, i) => {
+    const a = rev(i); if (a <= 0) return;
+    ctx.save(); ctx.globalAlpha = a;
+    const dead = (i < 3 && !gridOn && !(i === 2 && genOn));
+    const outage = i === 0 && !gridOn;
+    glow(dead ? 'rgba(255,60,60,.3)' : 'rgba(110,190,255,.25)', 20);
+    box(n.x - 95, n.y - 55 + (1 - a) * 12, 190, 110, 12, '#0d1525', outage ? '#ff4a4a' : dead ? '#3a4358' : '#3d6ea8', 1.5);
+    noGlow();
+    txt(n.name, n.x, n.y - 30, 16, '#fff', 'center', 650);
+    txt(n.v, n.x, n.y - 5, 18, dead ? '#566078' : PCOL[Math.max(0, i - 1)], 'center', 700, MONO);
+    pIcon(n, n.x, n.y + 28, t, st);
+    ctx.restore();
+  });
+  if (!gridOn && Math.sin(t * 8) > -.3) txt('⚠ GRID OUTAGE', 170, 180, 15, '#ff5a5a', 'center', 800, MONO);
+  if (onBatt) txt('ON BATTERY · 0 ms switchover', 1310, 180, 14, '#ffb13b', 'center', 700, MONO);
+  if (t > 12.5 && t < 14.5) txt('GRID RESTORED', 170, 180, 15, '#38f2a0', 'center', 800, MONO);
+  // stat chips
+  const chips = [['1 GPU', '≈ 1 kW'], ['1 rack', '≈ 120 kW'], ['1 data hall', '≈ 30 MW'], ['Whole campus', '100–1,000 MW']];
+  chips.forEach((c, i) => {
+    const a = ease(seg(t, 5 + i * .35, 5.6 + i * .35)); if (a <= 0) return;
+    ctx.save(); ctx.globalAlpha = a;
+    const cx = 290 + i * 340;
+    box(cx - 140, 680, 280, 56, 28, 'rgba(255,180,60,.07)', 'rgba(255,180,60,.35)');
+    txt(c[0], cx - 20, 708, 16, '#ffe6b0', 'right', 600);
+    txt(c[1], cx - 8, 708, 18, '#ffd24a', 'left', 700, MONO);
+    ctx.restore();
+  });
+}
+
+/* =====================================================================
+   SCENE 3 — THE DATA HALL (isometric)
+   ===================================================================== */
+const ISO = { k: 52, cx: 771, cy: 254 };
+const iso = (x, y, z) => [ISO.cx + (x - y) * ISO.k * .866, ISO.cy + (x + y) * ISO.k * .5 - z * ISO.k];
+function isoBox(x, y, z, w, d, h, c) {
+  poly([iso(x, y, z + h), iso(x + w, y, z + h), iso(x + w, y + d, z + h), iso(x, y + d, z + h)], c[0], c[3]);
+  poly([iso(x, y + d, z), iso(x + w, y + d, z), iso(x + w, y + d, z + h), iso(x, y + d, z + h)], c[1], c[3]);
+  poly([iso(x + w, y, z), iso(x + w, y + d, z), iso(x + w, y + d, z + h), iso(x + w, y, z + h)], c[2], c[3]);
+}
+const ROWY = [0, 2.4, 4.8, 7.2], NR = 14, RKW = .6, RKD = 1.1, RKH = 2.2;
+function airParticles(t, x0, x1, y0, y1, z0, z1, n, col, seed, toEdges) {
+  for (let i = 0; i < n; i++) {
+    const ph = (t * .35 + hash(i + seed)) % 1;
+    const x = x0 + hash(i * 3 + seed) * (x1 - x0);
+    let y = y0 + hash(i * 7 + seed) * (y1 - y0);
+    if (toEdges) { const mid = (y0 + y1) / 2; y = lerp(y, y < mid ? y0 + .05 : y1 - .05, ph * ph); }
+    const p = iso(x, y, lerp(z0, z1, ph));
+    ctx.globalAlpha = Math.sin(ph * Math.PI) * .75;
+    dot(p[0], p[1], 2, col);
+  }
+  ctx.globalAlpha = 1;
+}
+function sHall(t, D) {
+  bg('#05080f', '#0a1222');
+  ISO.cx = 771 + Math.sin(t * .22) * 22; ISO.cy = 254 + Math.cos(t * .18) * 8;
+  // floor
+  poly([iso(-.6, -.6, 0), iso(10.2, -.6, 0), iso(10.2, 8.9, 0), iso(-.6, 8.9, 0)], '#0b1424', '#1a2a46');
+  ctx.strokeStyle = 'rgba(80,120,190,.12)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = -.6; x <= 10.21; x += .6) { const a = iso(x, -.6, 0), b = iso(x, 8.9, 0); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+  for (let y = -.6; y <= 8.91; y += .6) { const a = iso(-.6, y, 0), b = iso(10.2, y, 0); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
+  ctx.stroke();
+  // aisles floors
+  const pulse = .1 + .05 * Math.sin(t * 2);
+  poly([iso(0, 1.1, 0), iso(8.4, 1.1, 0), iso(8.4, 2.4, 0), iso(0, 2.4, 0)], `rgba(60,150,255,${pulse})`);
+  poly([iso(0, 5.9, 0), iso(8.4, 5.9, 0), iso(8.4, 7.2, 0), iso(0, 7.2, 0)], `rgba(60,150,255,${pulse})`);
+  poly([iso(0, 3.5, 0), iso(8.4, 3.5, 0), iso(8.4, 4.8, 0), iso(0, 4.8, 0)], 'rgba(255,90,60,.08)');
+  // hot exhaust behind row 0
+  airParticles(t, 0, 8.4, -.5, -.05, .6, 3.2, 30, '#ff6a4a', 11, false);
+
+  const rackC = ['#2a3446', '#121a28', '#1b2433', 'rgba(120,160,220,.18)'];
+  const cduC = ['#2b3b4a', '#17303a', '#1c3440', 'rgba(120,220,220,.25)'];
+  for (let r = 0; r < 4; r++) {
+    const y = ROWY[r], isFront = r % 2 === 0;
+    for (let i = 0; i < NR; i++) {
+      const x = i * RKW;
+      isoBox(x, y, 0, RKW, RKD, RKH, rackC);
+      if (isFront) {
+        for (let k = 0; k < 9; k++) for (let u = 0; u < 2; u++) {
+          const on = hash(i * 50 + k * 3 + u + r * 977 + Math.floor(t * 5 + hash(i + k + r) * 5)) > .3;
+          const p = iso(x + .15 + u * .3, y + RKD, .25 + k * .21);
+          dot(p[0], p[1], 1.5, on ? (k % 4 ? '#38f2a0' : '#52b8ff') : '#123326');
+        }
+      } else {
+        // rear face: warm glow + cables
+        const a = iso(x + .05, y + RKD, .1), b = iso(x + RKW - .05, y + RKD, 2.1);
+        const g = ctx.createLinearGradient(0, b[1], 0, a[1]);
+        g.addColorStop(0, 'rgba(255,90,50,.35)'); g.addColorStop(1, 'rgba(255,90,50,.05)');
+        poly([iso(x + .05, y + RKD, .1), iso(x + RKW - .05, y + RKD, .1), iso(x + RKW - .05, y + RKD, 2.1), iso(x + .05, y + RKD, 2.1)], g);
+        for (let k = 0; k < 6; k++) { const p = iso(x + .3, y + RKD, .3 + k * .3); dot(p[0], p[1], 1.2, '#ffb36a'); }
+      }
+    }
+    // CDU at end of row
+    isoBox(8.8, y, 0, .8, RKD, 2.0, cduC);
+    const sp = iso(9.2, y + RKD, 1.5); box(sp[0] - 9, sp[1] - 5, 18, 10, 2, '#0a2a33', '#3ff');
+    // overhead liquid pipes
+    const ps = [iso(0, y + .35, 2.6), iso(9.2, y + .35, 2.6), iso(9.2, y + .35, 2.0)];
+    const pr = [iso(9.4, y + .75, 2.0), iso(9.4, y + .75, 2.75), iso(0, y + .75, 2.75)];
+    pipe(ps, '#2f8cff', t, 30, 3); pipe(pr, '#ff5a3c', t, 30, 3);
+    for (let i = 0; i < NR; i += 1) {
+      const a = iso(i * RKW + .3, y + .35, 2.6), b = iso(i * RKW + .3, y + .35, 2.2);
+      line([a, b], 'rgba(47,140,255,.6)', 1.5);
+    }
+    // between rows
+    if (r === 0) {
+      airParticles(t, 0, 8.4, 1.1, 2.4, 0, 1.9, 60, '#7cc8ff', 21, true);
+      // technician
+      const tx = .6 + (t * .32) % 7.2, ty = 1.75, sw = Math.sin(t * 7) * .12;
+      const f1 = iso(tx - sw, ty, 0), f2 = iso(tx + sw, ty, 0), hip = iso(tx, ty, .85), sh = iso(tx, ty, 1.45), hd = iso(tx, ty, 1.68);
+      line([f1, hip, f2], '#3a4a66', 4); line([hip, sh], '#ffb020', 8); dot(hd[0], hd[1], 5.5, '#e8c9a8'); dot(hd[0], hd[1] - 3, 5.5, '#f2f2f2');
+    }
+    if (r === 1) {
+      poly([iso(0, 3.5, 2.2), iso(8.4, 3.5, 2.2), iso(8.4, 4.8, 2.2), iso(0, 4.8, 2.2)], 'rgba(255,110,70,.10)', 'rgba(255,140,100,.35)');
+      poly([iso(8.4, 3.5, 0), iso(8.4, 4.8, 0), iso(8.4, 4.8, 2.2), iso(8.4, 3.5, 2.2)], 'rgba(255,110,70,.10)', 'rgba(255,140,100,.35)');
+      airParticles(t, 0, 8.4, 3.55, 4.75, 2.25, 3.9, 50, '#ff6a4a', 31, false);
+    }
+    if (r === 2) airParticles(t, 0, 8.4, 5.9, 7.2, 0, 1.9, 60, '#7cc8ff', 41, true);
+    if (r === 3) airParticles(t, 0, 8.4, 8.35, 8.8, .6, 3, 25, '#ff6a4a', 51, false);
+  }
+  // callouts
+  let p;
+  p = iso(0, 1.75, .2); callout(p[0], p[1], 520, 250, 'Cold aisle  ~25 °C', 'cool air rises through floor tiles', seg(t, 1.5, 2.3), 'right', '#7cc8ff');
+  p = iso(.3, 4.15, 2.3); callout(p[0], p[1], 430, 345, 'Hot aisle  40 °C+', 'sealed so hot air can’t mix back', seg(t, 4.5, 5.3), 'right', '#ff7a5a');
+  p = iso(4, .35, 2.6); callout(p[0], p[1], 1010, 150, 'Liquid cooling loop', 'blue = cool supply · red = warm return', seg(t, 9.5, 10.3), 'left', '#5aa8ff');
+  p = iso(9.6, 7.6, 1.0); callout(p[0], p[1], 1080, 650, 'Coolant distribution unit', 'swaps heat to the building water', seg(t, 11, 11.8), 'left', '#3ff');
+  p = iso(8.1, 5.35, 2.2); callout(p[0], p[1], 1150, 470, 'One AI rack', '~120 kW · 72 GPUs · ~1.4 tonnes', seg(t, 7, 7.8), 'left', '#ffd24a');
+}
+
+/* =====================================================================
+   SCENE 4 — INSIDE A RACK
+   ===================================================================== */
+const SLOTS = [...'PPP', ...'CCCCCCCCCC', ...'SSSSSSSSS', ...'CCCCCCCC', ...'PPP'];
+const RX = 170, RW = 300, RY = 100, RH = 670, SH = RH / SLOTS.length, HL = 6;
+const TX = 620, TY = 170, TW = 900, TH = 550;
+function sRack(t, D) {
+  bg();
+  // rack frame
+  box(RX - 16, RY - 16, RW + 32, RH + 32, 8, '#161d2b', '#2e3a52', 1.5);
+  ctx.fillStyle = '#0a0f18'; ctx.fillRect(RX - 6, RY - 4, RW + 12, RH + 8);
+  SLOTS.forEach((s, i) => {
+    const y = RY + i * SH;
+    if (s === 'P') {
+      box(RX, y + 1, RW, SH - 2, 2, '#2a281c', '#4a4428');
+      for (let k = 0; k < 4; k++) { const fx = RX + RW - 20 - k * 22; ctx.strokeStyle = '#6b6440'; ctx.beginPath(); ctx.arc(fx, y + SH / 2, 7, 0, 6.29); ctx.stroke(); const an = t * 20 + k; ctx.beginPath(); ctx.moveTo(fx - Math.cos(an) * 6, y + SH / 2 - Math.sin(an) * 6); ctx.lineTo(fx + Math.cos(an) * 6, y + SH / 2 + Math.sin(an) * 6); ctx.stroke(); }
+      dot(RX + 12, y + SH / 2, 2.5, '#ffd24a'); txt('POWER', RX + 24, y + SH / 2, 10, '#a99a5a', 'left', 700, MONO);
+    } else if (s === 'C') {
+      box(RX, y + 1, RW, SH - 2, 2, i === HL && t > 4 ? '#1b2a40' : '#151d2b', '#26324a');
+      ctx.fillStyle = '#2b3650'; ctx.fillRect(RX + 4, y + 4, 6, SH - 8); ctx.fillRect(RX + RW - 10, y + 4, 6, SH - 8);
+      for (let k = 0; k < 10; k++) { const on = hash(i * 40 + k + Math.floor(t * 6 + hash(i + k) * 6)) > .3; dot(RX + 24 + k * 9, y + SH / 2, 1.8, on ? '#38f2a0' : '#123326'); }
+      txt('GPU ×4', RX + RW - 18, y + SH / 2, 10, '#5d7398', 'right', 700, MONO);
+    } else {
+      box(RX, y + 1, RW, SH - 2, 2, '#1d1730', '#3a2e5c');
+      for (let k = 0; k < 18; k++) for (let r = 0; r < 2; r++) {
+        const on = hash(i * 90 + k * 2 + r + Math.floor(t * 8 + hash(k + r + i) * 4)) > .45;
+        box(RX + 14 + k * 15, y + 4 + r * 8, 11, 6, 1, on ? '#b48cff' : '#2c2348');
+      }
+    }
+  });
+  // labels on the rack
+  const la = seg(t, .6, 1.4) * (1 - seg(t, 4, 4.6) * .0);
+  callout(RX - 16, RY + SH * 1.5, 120, RY + SH * 1.5, 'Power', 'shelves', la, 'right', '#ffd24a');
+  callout(RX - 16, RY + SH * 8, 120, RY + SH * 8, 'Compute', '18 trays', seg(t, 1.2, 2), 'right', '#38f2a0');
+  callout(RX - 16, RY + SH * 17.5, 120, RY + SH * 17.5, 'Switch', '9 trays', seg(t, 1.8, 2.6), 'right', '#b48cff');
+  // copper spine (back-of-rack cables) — shown later
+  const ca = seg(t, 10, 11);
+  if (ca > 0) {
+    ctx.save(); ctx.globalAlpha = ca;
+    SLOTS.forEach((s, i) => {
+      if (s !== 'C') return;
+      const y = RY + i * SH + SH / 2;
+      for (let j = 0; j < 3; j++) {
+        const sy = RY + (13 + ((i + j * 3) % 9)) * SH + SH / 2;
+        const ph = (t * 1.5 + i * .13 + j * .3) % 1;
+        ctx.strokeStyle = `rgba(180,140,255,${.15 + .5 * Math.max(0, Math.sin(ph * Math.PI))})`; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(RX + RW + 16, y); ctx.bezierCurveTo(RX + RW + 70 + j * 18, y, RX + RW + 70 + j * 18, sy, RX + RW + 16, sy); ctx.stroke();
+      }
+    });
+    ctx.restore();
+  }
+  // zoom into one compute tray
+  const za = ease(seg(t, 4, 5.2));
+  if (za > 0) {
+    const y = RY + HL * SH;
+    glow('#7fd4ff', 16); box(RX - 2, y - 1, RW + 4, SH + 2, 3, null, '#7fd4ff', 2); noGlow();
+    ctx.save(); ctx.globalAlpha = za * .5; ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(RX + RW + 2, y); ctx.lineTo(TX, TY); ctx.moveTo(RX + RW + 2, y + SH); ctx.lineTo(TX, TY + TH); ctx.stroke();
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = za;
+    const sc = lerp(.3, 1, za);
+    ctx.translate(TX, TY + TH / 2); ctx.scale(sc, sc); ctx.translate(-TX, -(TY + TH / 2));
+    drawTray(t);
+    ctx.restore();
+  }
+}
+function drawTray(t) {
+  // board
+  box(TX, TY, TW, TH, 10, '#0d2620', '#2b5a4a', 2);
+  ctx.strokeStyle = 'rgba(80,200,150,.07)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 40; i++) { const y = TY + 20 + hash(i) * (TH - 40); ctx.beginPath(); ctx.moveTo(TX + 10, y); ctx.lineTo(TX + 200 + hash(i + 5) * 600, y); ctx.lineTo(TX + 220 + hash(i + 5) * 600, y + 20); ctx.stroke(); }
+  // rear connectors (to switch trays)
+  for (let i = 0; i < 8; i++) box(TX + 40 + i * 108, TY + 8, 80, 18, 3, '#2c2348', '#b48cff');
+  txt('SCALE-UP CONNECTORS → SWITCH TRAYS', TX + TW / 2, TY + 38, 11, '#b48cff', 'center', 700, MONO);
+  // DIMMs + CPUs
+  for (const cx of [TX + 180, TX + 610]) {
+    for (let k = 0; k < 6; k++) { box(cx - 60 + k * 6 - 30, TY + 300, 3, 130, 1, '#355070'); box(cx + 140 + k * 6 - 30, TY + 300, 3, 130, 1, '#355070'); }
+    box(cx, TY + 310, 110, 110, 6, '#232a36', '#4a5670', 1.5);
+    box(cx + 25, TY + 335, 60, 60, 4, '#3a4252');
+    txt('CPU', cx + 55, TY + 365, 14, '#c9d4e6', 'center', 700, MONO);
+  }
+  // GPUs
+  const plate = ease(seg(t, 6, 7));
+  for (let i = 0; i < 4; i++) {
+    const gx = TX + 60 + i * 210, gy = TY + 60;
+    box(gx, gy, 150, 150, 6, '#262d3a', '#56637d', 1.5);
+    box(gx + 40, gy + 35, 70, 80, 3, '#0d1118', '#3a4458');
+    for (let k = 0; k < 4; k++) { box(gx + 14, gy + 30 + k * 23, 20, 18, 2, '#4a3f6a'); box(gx + 116, gy + 30 + k * 23, 20, 18, 2, '#4a3f6a'); }
+    // die activity
+    for (let a = 0; a < 6; a++) for (let b = 0; b < 7; b++) {
+      const v = .5 + .5 * Math.sin(t * 6 + a * .9 + b * .7 + i);
+      ctx.fillStyle = `rgba(80,${180 + v * 60},255,${.2 + v * .5})`; ctx.fillRect(gx + 44 + a * 11, gy + 39 + b * 11, 8, 8);
+    }
+    if (plate > 0) {
+      ctx.save(); ctx.globalAlpha = plate * .9;
+      const g = ctx.createLinearGradient(gx, gy, gx + 150, gy + 150); g.addColorStop(0, '#c98a4b'); g.addColorStop(.5, '#e7b07a'); g.addColorStop(1, '#a8682f');
+      box(gx + 8, gy + 8 - (1 - plate) * 30, 134, 134, 8, g, '#6a3f18');
+      ctx.strokeStyle = 'rgba(80,40,10,.4)'; for (let k = 0; k < 8; k++) { ctx.beginPath(); ctx.moveTo(gx + 20, gy + 22 + k * 15); ctx.lineTo(gx + 130, gy + 22 + k * 15); ctx.stroke(); }
+      ctx.restore();
+    }
+    txt('GPU', gx + 75, gy + 75, 18, plate > .5 ? '#3b210c' : '#e6edf8', 'center', 800, MONO);
+    txt('~1,000 W', gx + 75, gy + 97, 12, plate > .5 ? '#5a3412' : '#9fb3cc', 'center', 700, MONO);
+  }
+  // coolant tubes
+  if (plate > 0) {
+    ctx.save(); ctx.globalAlpha = plate;
+    const sY = TY + 236, rY = TY + 256;
+    pipe([[TX - 30, sY], [TX + 820, sY]], '#2f8cff', t, 60, 5);
+    pipe([[TX + 830, rY], [TX - 30, rY]], '#ff5a3c', t, 60, 5);
+    for (let i = 0; i < 4; i++) {
+      const gx = TX + 60 + i * 210;
+      pipe([[gx + 55, sY], [gx + 55, TY + 200]], '#2f8cff', t, 60, 4);
+      pipe([[gx + 95, TY + 200], [gx + 95, rY]], '#ff5a3c', t, 60, 4);
+    }
+    ctx.restore();
+  }
+  // NICs + fibres
+  for (let i = 0; i < 4; i++) {
+    const nx = TX + 120 + i * 200, ny = TY + TH - 52;
+    box(nx, ny, 80, 36, 4, '#1a2236', '#4a6aa0', 1.5);
+    txt('NIC', nx + 40, ny + 18, 12, '#9fc4ff', 'center', 700, MONO);
+    const fp = Path([[nx + 40, ny + 36], [nx + 40, TY + TH + 30]]);
+    line(fp.pts, 'rgba(100,230,255,.35)', 3); flow(fp, t, 3, 120, 2, '#6ff', 10);
+  }
+  callout(TX + 135, TY + 60, TX + 135, 128, 'GPUs', 'the AI accelerators', seg(t, 5.2, 6), 'left', '#7fd4ff');
+  callout(TX + 765, TY + 68, TX + 760, 128, 'Cold plates', 'liquid flows right over each chip', seg(t, 7, 7.8), 'left', '#ff9a5a');
+  callout(TX + 160, TY + TH - 34, TX + 330, 760, '800 Gb/s network cards', 'one per GPU, out to the fabric', seg(t, 8.2, 9), 'left', '#6ff');
+}
+
+/* =====================================================================
+   SCENE 5 — INSIDE THE CHIP
+   ===================================================================== */
+function sChip(t, D) {
+  bg('#05070e', '#0b1020');
+  const tile = t > 8;
+  // package
+  box(110, 170, 540, 540, 14, '#16261f', '#2f5546', 2);
+  for (let i = 0; i < 26; i++) for (let j = 0; j < 26; j++) if (i < 1 || j < 1 || i > 24 || j > 24) dot(122 + i * 20.6, 182 + j * 20.6, 1.5, '#7a6a3a');
+  // HBM
+  const hbm = [];
+  for (let s = 0; s < 2; s++) for (let k = 0; k < 4; k++) {
+    const hx = s ? 550 : 130, hy = 255 + k * 95; hbm.push([hx, hy]);
+    box(hx, hy, 80, 80, 5, '#2a2248', '#7a64c8', 1.5);
+    for (let l = 0; l < 6; l++) { ctx.fillStyle = 'rgba(180,150,255,.25)'; ctx.fillRect(hx + 8, hy + 10 + l * 11, 64, 5); }
+    txt('HBM', hx + 40, hy + 40, 12, '#d7cbff', 'center', 800, MONO);
+    // data streams
+    const p = Path(s ? [[hx, hy + 40], [520, hy + 40]] : [[hx + 80, hy + 40], [240, hy + 40]]);
+    flow(p, t, 4, tile ? 140 : 70, 2, '#c3a8ff', 10);
+  }
+  // die
+  box(240, 250, 280, 380, 6, '#0b0f17', '#5a6a88', 1.5);
+  const cw = 260 / 8, ch = 360 / 12;
+  for (let c = 0; c < 8; c++) for (let r = 0; r < 12; r++) {
+    const base = .5 + .5 * Math.sin(t * (tile ? 9 : 4) - (c + r) * .6 + hash(c * 12 + r) * 3);
+    const v = tile ? .4 + .6 * base : .15 + .6 * base;
+    ctx.fillStyle = `rgba(${60 + v * 60},${150 + v * 100},255,${.15 + v * .7})`;
+    ctx.fillRect(250 + c * cw + 2, 260 + r * ch + 2, cw - 4, ch - 4);
+  }
+  glow('rgba(80,180,255,.5)', 30); box(240, 250, 280, 380, 6, null, 'rgba(120,200,255,.4)', 1); noGlow();
+  callout(170, 255, 170, 135, 'HBM memory stacks', 'stacked DRAM · ~8 TB/s', seg(t, .8, 1.6), 'left', '#c3a8ff');
+  callout(420, 250, 470, 135, 'Compute die', '~200 billion transistors', seg(t, 1.5, 2.3), 'left', '#7fd4ff');
+
+  // ---- matrix multiply ----
+  const ma = ease(seg(t, 2.6, 3.4)); if (ma <= 0) return;
+  ctx.save(); ctx.globalAlpha = ma;
+  const C = 24, AX = 760, BX = 1000, CX = 1240, MY = 350;
+  txt('A  (inputs)', AX + 96, MY - 24, 15, '#8fc8ff', 'center', 700);
+  txt('B  (model weights)', BX + 96, MY - 24, 15, '#ffc890', 'center', 700);
+  txt('C  (outputs)', CX + 96, MY - 24, 15, '#d8b0ff', 'center', 700);
+  txt('×', 976, MY + 96, 30, '#fff', 'center', 300); txt('=', 1216, MY + 96, 30, '#fff', 'center', 300);
+  const k = tile ? 64 : Math.floor((t - 3) * 5);
+  const ci = Math.floor(clamp(k, 0, 63) / 8), cj = clamp(k, 0, 63) % 8;
+  const flick = Math.floor(t * 5);
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    const va = hash(i * 8 + j + (tile ? flick * 64 : 0)), vb = hash(200 + i * 8 + j + (tile ? flick * 64 : 0));
+    const hiA = !tile && i === ci, hiB = !tile && j === cj;
+    ctx.fillStyle = `hsl(205,70%,${18 + va * 32 + (hiA ? 18 : 0)}%)`; ctx.fillRect(AX + j * C + 1, MY + i * C + 1, C - 2, C - 2);
+    ctx.fillStyle = `hsl(30,75%,${18 + vb * 30 + (hiB ? 18 : 0)}%)`; ctx.fillRect(BX + j * C + 1, MY + i * C + 1, C - 2, C - 2);
+    let filled;
+    if (tile) { const tIdx = (i < 4 ? 0 : 2) + (j < 4 ? 0 : 1); filled = (t - 8) / .35 > tIdx; }
+    else filled = i * 8 + j < k;
+    const vc = hash(400 + i * 8 + j + (tile ? flick * 64 : 0));
+    ctx.fillStyle = filled ? `hsl(280,65%,${30 + vc * 30}%)` : '#121626';
+    ctx.fillRect(CX + j * C + 1, MY + i * C + 1, C - 2, C - 2);
+  }
+  if (!tile && k >= 0) {
+    glow('#fff', 12); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.strokeRect(AX, MY + ci * C, 8 * C, C); ctx.strokeRect(BX + cj * C, MY, C, 8 * C); ctx.strokeRect(CX + cj * C, MY + ci * C, C, C); noGlow();
+    // sweeping product dot
+    const s = (t * 5 % 1) * 8, si = Math.floor(s);
+    dot(AX + si * C + C / 2, MY + ci * C + C / 2, 4, '#fff'); dot(BX + cj * C + C / 2, MY + si * C + C / 2, 4, '#fff');
+    txt(`C[${ci}][${cj}] = A[${ci}][0]·B[0][${cj}] + A[${ci}][1]·B[1][${cj}] + … + A[${ci}][7]·B[7][${cj}]`, 1144, 600, 15, '#c9d4e6', 'center', 500, MONO);
+    txt('one output = 8 multiplies + 8 adds', 1144, 628, 14, '#7f93b3', 'center', 500);
+  } else if (tile) {
+    for (let q = 0; q < 4; q++) {
+      const ox = (q % 2) * 4 * C, oy = Math.floor(q / 2) * 4 * C, a = clamp(1 - Math.abs((t - 8) / .35 - q - .5));
+      if (a > 0) { glow('#d8b0ff', 18); ctx.strokeStyle = `rgba(230,200,255,${a})`; ctx.lineWidth = 2.5; ctx.strokeRect(CX + ox, MY + oy, 4 * C, 4 * C); noGlow(); }
+    }
+    txt('Tensor cores compute whole tiles in a single step', 1144, 600, 16, '#e6d6ff', 'center', 600);
+    const n = Math.max(0, t - 8.3) * 1.0e15;
+    txt('multiply-adds by this one GPU since you started reading this line', 1144, 650, 13, '#7f93b3', 'center', 500);
+    glow('rgba(200,150,255,.6)', 20); txt(fmt(n), 1144, 690, 34, '#ffffff', 'center', 700, MONO); noGlow();
+  }
+  ctx.restore();
+}
+
+/* =====================================================================
+   SCENE 6 — THE NETWORK & TRAINING
+   ===================================================================== */
+const SPX = [230, 470, 710, 950], LFX = [...Array(8)].map((_, i) => 120 + i * 130), SVX = [...Array(16)].map((_, i) => 90 + i * 64);
+const SPY = 200, LFY = 385, SVY = 590;
+function sNet(t, D) {
+  bg();
+  const CYC = 2.4, c = Math.floor(t / CYC), p = t % CYC, sync = p > 1.4;
+  // links
+  ctx.lineWidth = 1;
+  for (let l = 0; l < 8; l++) for (let s = 0; s < 4; s++) line([[LFX[l], LFY - 15], [SPX[s], SPY + 18]], sync ? 'rgba(140,120,255,.22)' : 'rgba(80,110,170,.15)', 1);
+  for (let v = 0; v < 16; v++) line([[SVX[v], SVY - 35], [LFX[v >> 1], LFY + 15]], sync ? 'rgba(140,120,255,.25)' : 'rgba(80,110,170,.18)', 1);
+  // switches
+  SPX.forEach(x => { box(x - 65, SPY - 18, 130, 36, 6, '#1d1730', '#7a64c8', 1.5); for (let k = 0; k < 12; k++) dot(x - 50 + k * 9, SPY, 1.6, hash(k + x + Math.floor(t * 10)) > .4 ? '#b48cff' : '#2c2348'); });
+  LFX.forEach(x => { box(x - 45, LFY - 15, 90, 30, 5, '#191f36', '#5a74c8', 1.5); for (let k = 0; k < 8; k++) dot(x - 32 + k * 9, LFY, 1.5, hash(k + x + Math.floor(t * 10)) > .4 ? '#8fb3ff' : '#1f2848'); });
+  SVX.forEach((x, v) => {
+    box(x - 26, SVY - 35, 52, 70, 5, '#121a28', '#2e3d5a', 1.5);
+    for (let g = 0; g < 4; g++) {
+      const gx = x - 11 + (g % 2) * 22, gy = SVY - 14 + Math.floor(g / 2) * 26;
+      const v2 = sync ? .25 : .55 + .45 * Math.sin(t * 10 + v + g);
+      glow('#38f2a0', sync ? 0 : 12); box(gx - 8, gy - 8, 16, 16, 3, `rgba(56,242,160,${v2})`); noGlow();
+    }
+  });
+  txt('SPINE SWITCHES', 40, SPY - 46, 12, '#9a86e0', 'left', 800, MONO);
+  txt('LEAF SWITCHES', 40, LFY - 40, 12, '#7f98e0', 'left', 800, MONO);
+  txt('GPU SERVERS', 40, SVY - 58, 12, '#38c890', 'left', 800, MONO);
+  // packets
+  const pkt = (a, b, k, prog, col) => {
+    const la = a >> 1, lb = b >> 1;
+    const pts = la === lb ? [[SVX[a], SVY - 35], [LFX[la], LFY], [SVX[b], SVY - 35]]
+      : [[SVX[a], SVY - 35], [LFX[la], LFY], [SPX[k], SPY], [LFX[lb], LFY], [SVX[b], SVY - 35]];
+    const P = Path(pts), q = P.at(prog * P.len);
+    dot(q[0], q[1], 3, col);
+  };
+  glow('#c3a8ff', 12);
+  if (sync) {
+    for (let i = 0; i < 56; i++) {
+      const a = Math.floor(hash(c * 97 + i) * 16); let b = Math.floor(hash(c * 131 + i * 7) * 16); if (b === a) b = (a + 5) % 16;
+      const k = Math.floor(hash(c * 17 + i * 3) * 4), d = hash(i + c * 3) * .25;
+      const pr = (p - 1.4 - d) / .7;
+      if (pr > 0 && pr < 1) pkt(a, b, k, pr, '#d0b8ff');
+    }
+  } else {
+    for (let i = 0; i < 6; i++) {
+      const a = Math.floor(hash(c * 7 + i * 13) * 16), b = (a + 3 + i) % 16, k = i % 4, pr = (p / 1.4 + hash(i)) % 1;
+      pkt(a, b, k, pr, '#7f98e0');
+    }
+  }
+  noGlow();
+  txt('Every link: optical fibre, 400–800 Gb/s · a large cluster has 100,000+ of them', 570, 690, 14, '#6f87aa', 'center', 500);
+  // right panel: phase + loss
+  const pa = ease(seg(t, 1, 2));
+  ctx.save(); ctx.globalAlpha = pa;
+  box(1170, 150, 380, 300, 12, 'rgba(10,16,30,.85)', '#2a3a5a');
+  txt('TRAINING LOSS  (model error)', 1190, 176, 12, '#8fa6c8', 'left', 800, MONO);
+  const gx = 1195, gy = 200, gw = 330, gh = 220, prog = clamp(t / (D - 1));
+  ctx.strokeStyle = '#2a3a5a'; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + gh); ctx.lineTo(gx + gw, gy + gh); ctx.stroke();
+  ctx.beginPath();
+  const N = Math.floor(160 * prog);
+  for (let i = 0; i <= N; i++) {
+    const x = i / 160, L = .25 + .7 * Math.exp(-3.5 * x) + .05 * (hash(i) - .5) * (1 - x * .5);
+    const X = gx + x * gw, Y = gy + gh - L * gh;
+    i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+  }
+  ctx.strokeStyle = '#38f2a0'; ctx.lineWidth = 2; glow('#38f2a0', 8); ctx.stroke(); noGlow();
+  txt('weeks →', gx + gw, gy + gh + 14, 11, '#5d7398', 'right', 500, MONO);
+  box(1170, 470, 380, 170, 12, 'rgba(10,16,30,.85)', '#2a3a5a');
+  txt(`STEP ${fmt(184200 + c)}`, 1190, 498, 14, '#c9d4e6', 'left', 700, MONO);
+  txt(sync ? 'SYNC · all-reduce' : 'COMPUTE · forward + backward', 1190, 540, 20, sync ? '#d0b8ff' : '#38f2a0', 'left', 750);
+  txt(sync ? 'GPUs swap and average their gradients' : 'each GPU learns from its own slice of data', 1190, 570, 13, '#8fa6c8', 'left', 500);
+  box(1190, 600, 340, 10, 5, '#1a2338');
+  box(1190, 600, 340 * (p / CYC), 10, 5, sync ? '#b48cff' : '#38f2a0');
+  ctx.restore();
+}
+
+/* =====================================================================
+   SCENE 7 — A PROMPT'S JOURNEY
+   ===================================================================== */
+const PROMPT = 'Why is the sky blue?';
+const PTOK = ['Why', ' is', ' the', ' sky', ' blue', '?'];
+const RTOK = ['Sunlight', ' is', ' a', ' mix', ' of', ' colours.', ' Air', ' molecules', ' scatter', ' short', ' blue', ' waves', ' far', ' more', ' than', ' red', ' ones,', ' so', ' blue', ' light', ' reaches', ' you', ' from', ' every', ' direction.'];
+const ROUTE = Path([[250, 440], [440, 440], [650, 440], [860, 440], [1120, 440]]);
+const TOK0 = 4.6, TOKDT = .32, TOKFLY = .8;
+const GPU_HL = 2;
+function sPrompt(t, D) {
+  bg();
+  // route line
+  line(ROUTE.pts, 'rgba(110,170,255,.18)', 10); line(ROUTE.pts, 'rgba(110,170,255,.4)', 1.5);
+  // other users' traffic (batching)
+  for (let i = 0; i < 40; i++) {
+    const inb = i % 2 === 0, ph = (t * (.18 + hash(i) * .1) + hash(i + 9)) % 1;
+    const q = ROUTE.at((inb ? ph : 1 - ph) * ROUTE.len);
+    ctx.globalAlpha = .55 * Math.sin(ph * Math.PI);
+    dot(q[0], q[1] + (hash(i + 3) - .5) * 16, 2.4, inb ? '#8a9bb5' : '#4fd6a0');
+  }
+  ctx.globalAlpha = 1;
+  // internet cloud
+  ctx.fillStyle = '#152238';
+  for (const [dx, dy, r] of [[-40, 8, 30], [-10, -14, 38], [30, -4, 34], [52, 14, 24], [0, 18, 30]]) { ctx.beginPath(); ctx.arc(440 + dx, 440 + dy, r, 0, 6.29); ctx.fill(); }
+  txt('Internet', 440, 446, 15, '#9fc4ff', 'center', 700);
+  const hopFlash = x => { const pp = seg(t, 1, 3) * ROUTE.len; const q = ROUTE.at(pp); return clamp(1 - Math.abs(q[0] - x) / 60) * (t > 1 && t < 3.2 ? 1 : 0); };
+  for (const [x, a, b] of [[650, 'Front door', 'load balancer · auth'], [860, 'Router', 'finds a GPU with room']]) {
+    const f = hopFlash(x);
+    glow('#7fd4ff', 25 * f); box(x - 78, 400, 156, 80, 10, '#0f1828', f > .2 ? '#7fd4ff' : '#34507a', 1.5); noGlow();
+    txt(a, x, 428, 16, '#fff', 'center', 650); txt(b, x, 452, 12, '#8fa6c8', 'center', 500);
+  }
+  // GPU server
+  box(1120, 240, 400, 400, 14, '#0d1525', '#3d6ea8', 1.5);
+  txt('GPU server · 8 GPUs · one model copy', 1320, 266, 14, '#c9d4e6', 'center', 650);
+  let lastTok = -1;
+  for (let j = 0; j < RTOK.length; j++) if (t >= TOK0 + j * TOKDT) lastTok = j;
+  const emitFlash = lastTok >= 0 ? Math.exp(-(t - (TOK0 + lastTok * TOKDT)) * 9) : 0;
+  const prefill = seg(t, 3, 3.3) * (1 - seg(t, 4.3, 4.6));
+  for (let g = 0; g < 8; g++) {
+    const gx = 1145 + (g % 4) * 92, gy = 290 + Math.floor(g / 4) * 95;
+    const busy = .35 + .25 * Math.sin(t * 8 + g * 1.7);
+    const mine = g === GPU_HL ? Math.max(prefill, emitFlash) : 0;
+    glow(mine > .1 ? '#ffd24a' : '#38f2a0', 10 + mine * 20);
+    box(gx, gy, 80, 80, 6, mine > .1 ? `rgba(255,210,74,${.25 + mine * .6})` : `rgba(56,242,160,${busy * .35})`, mine > .1 ? '#ffd24a' : '#2f7a5a', 1.5);
+    noGlow(); txt('GPU', gx + 40, gy + 40, 13, '#e6edf8', 'center', 700, MONO);
+  }
+  // KV cache bar
+  const used = t < 3 ? 0 : (PTOK.length + lastTok + 1) / (PTOK.length + RTOK.length);
+  txt('KV cache — the model’s memory of this conversation', 1145, 500, 12, '#8fa6c8', 'left', 600);
+  box(1145, 512, 350, 16, 4, '#141c2c', '#2a3a5a');
+  ctx.fillStyle = 'rgba(180,140,255,.35)'; ctx.fillRect(1147, 514, 346 * .45, 12);
+  ctx.fillStyle = '#d0b8ff'; ctx.fillRect(1147 + 346 * .45, 514, 346 * .4 * used, 12);
+  txt('other users', 1147, 540, 11, '#7f6aa8', 'left', 500, MONO); txt('you', 1147 + 346 * .45, 540, 11, '#d0b8ff', 'left', 700, MONO);
+  txt(`requests in this batch: ${200 + Math.floor(t * 3 + Math.sin(t) * 4)}`, 1320, 600, 14, '#4fd6a0', 'center', 700, MONO);
+  // prefill chips
+  const pa = seg(t, 2.8, 3.2);
+  if (pa > 0) {
+    ctx.save(); ctx.globalAlpha = pa; let x = 1130;
+    ctx.font = `600 13px ${MONO}`;
+    PTOK.forEach(tk => {
+      const w = ctx.measureText(tk.trim()).width + 16;
+      const lit = prefill;
+      glow('#ffd24a', 14 * lit); box(x, 175, w, 26, 6, lit > .2 ? 'rgba(255,210,74,.3)' : '#152036', lit > .2 ? '#ffd24a' : '#3d5a88'); noGlow();
+      txt(tk.trim(), x + w / 2, 188, 13, '#fff', 'center', 600, MONO);
+      if (lit > .2) line([[x + w / 2, 201], [1145 + GPU_HL * 92 + 40, 290]], `rgba(255,210,74,${lit * .5})`, 1);
+      x += w + 6;
+    });
+    txt(t < 4.6 ? 'PREFILL: whole prompt at once' : 'prompt (cached)', 1130, 150, 12, t < 4.6 ? '#ffd24a' : '#6f87aa', 'left', 800, MONO);
+    if (t >= 4.6) txt('DECODE: one token at a time', 1320, 222, 12, '#4fd6a0', 'left', 800, MONO);
+    ctx.restore();
+  }
+  // our prompt travelling
+  if (t > 1 && t < 3.05) {
+    const q = ROUTE.at(ease(seg(t, 1, 3)) * ROUTE.len);
+    ctx.font = `600 13px ${FONT}`; const w = ctx.measureText(PROMPT).width + 20;
+    glow('#7fd4ff', 18); box(q[0] - w / 2, q[1] - 34, w, 26, 13, '#1f4f8a', '#7fd4ff'); noGlow();
+    txt(PROMPT, q[0], q[1] - 21, 13, '#fff', 'center', 600);
+    dot(q[0], q[1], 5, '#7fd4ff');
+  }
+  // tokens flying back
+  let shown = '';
+  RTOK.forEach((tk, j) => {
+    const te = TOK0 + j * TOKDT, pr = (t - te) / TOKFLY;
+    if (pr >= 1) shown += tk;
+    else if (pr > 0) {
+      const q = ROUTE.at((1 - ease(pr)) * ROUTE.len);
+      ctx.font = `600 12px ${MONO}`; const w = ctx.measureText(tk.trim()).width + 14;
+      glow('#4fd6a0', 12); box(q[0] - w / 2, q[1] + 52, w, 22, 6, '#0f3a2c', '#4fd6a0'); noGlow();
+      txt(tk.trim(), q[0], q[1] + 63, 12, '#dfffee', 'center', 600, MONO);
+    }
+  });
+  // phone
+  box(40, 220, 210, 440, 30, '#0a0e16', '#3a4660', 3);
+  box(52, 248, 186, 384, 14, '#0f1626');
+  box(118, 230, 54, 8, 4, '#1d2638');
+  const typed = PROMPT.slice(0, Math.floor(seg(t, .2, 1) * PROMPT.length));
+  if (t >= 1) {
+    ctx.font = `500 13px ${FONT}`; const w = ctx.measureText(PROMPT).width + 20;
+    box(228 - w, 266, w, 28, 12, '#2f6fd6'); txt(PROMPT, 228 - w / 2, 280, 13, '#fff', 'center', 500);
+  }
+  box(60, 596, 170, 28, 14, '#1a2336', '#2f3c58');
+  txt(t < 1 ? typed + (Math.sin(t * 12) > 0 ? '|' : '') : 'Message…', 72, 610, 12, t < 1 ? '#fff' : '#56627a', 'left', 500);
+  if (shown || (t > 3 && t < TOK0 + TOKFLY)) {
+    const lines = wrap(shown || '…', 156, 13, 500);
+    const h = lines.length * 18 + 16;
+    box(62, 306, 172, h, 12, '#1c2638');
+    lines.forEach((l, i) => txt(l, 72, 322 + i * 18, 13, '#e6edf8', 'left', 500));
+  }
+  txt('You', 145, 690, 14, '#8fa6c8', 'center', 600);
+}
+
+/* =====================================================================
+   SCENE 8 — HEAT OUT
+   ===================================================================== */
+function sHeat(t, D) {
+  bg('#060a14', '#0c1222');
+  // sky band above roof
+  const g0 = ctx.createLinearGradient(0, 0, 0, 340); g0.addColorStop(0, '#03050c'); g0.addColorStop(1, '#0d1832');
+  ctx.fillStyle = g0; ctx.fillRect(0, 0, W, 340);
+  // building
+  box(80, 340, 1440, 410, 4, '#0b111e', '#2a3650', 2);
+  ctx.fillStyle = '#2a3650'; ctx.fillRect(70, 334, 1460, 8);
+  txt('INSIDE THE BUILDING', 100, 370, 12, '#4a5a7a', 'left', 800, MONO);
+  txt('OUTSIDE', 100, 316, 12, '#4a5a7a', 'left', 800, MONO);
+  // chip + cold plate
+  box(130, 520, 210, 170, 10, '#141c2c', '#2e3d5a', 1.5);
+  const hg = ctx.createRadialGradient(235, 610, 4, 235, 610, 80 + Math.sin(t * 3) * 6);
+  hg.addColorStop(0, 'rgba(255,90,40,.9)'); hg.addColorStop(.5, 'rgba(255,120,40,.25)'); hg.addColorStop(1, 'rgba(255,120,40,0)');
+  ctx.fillStyle = hg; ctx.fillRect(130, 520, 210, 170);
+  box(195, 570, 80, 80, 6, '#c98a4b', '#6a3f18', 1.5);
+  txt('GPU + cold plate', 235, 538, 13, '#fff', 'center', 650);
+  txt('1,000 W → heat', 235, 670, 13, '#ffb08a', 'center', 700, MONO);
+  // CDU
+  box(600, 500, 160, 200, 10, '#0e2026', '#2fa8b8', 1.5);
+  txt('CDU', 680, 528, 17, '#fff', 'center', 750); txt('heat exchanger', 680, 548, 12, '#8fd0d8', 'center', 500);
+  ctx.strokeStyle = 'rgba(120,220,230,.5)'; ctx.lineWidth = 1.5;
+  for (let k = 0; k < 7; k++) { ctx.beginPath(); ctx.moveTo(620, 570 + k * 15); for (let x = 620; x <= 740; x += 10) ctx.lineTo(x, 570 + k * 15 + ((x / 10) % 2 ? 5 : -5)); ctx.stroke(); }
+  // loops
+  pipe([[275, 570], [275, 575], [600, 575]], '#ff5a3c', t, 50, 9);
+  pipe([[600, 640], [275, 640], [275, 632]], '#2f8cff', t, 50, 9);
+  pipe([[760, 560], [900, 560], [900, 250], [1060, 250]], '#ff7a3c', t, 50, 11);
+  pipe([[1060, 300], [960, 300], [960, 640], [760, 640]], '#3a9cff', t, 50, 11);
+  // heat particles along hot pipes
+  flow(Path([[280, 575], [600, 575]]), t, 6, 70, 3, '#ffb36a', 12);
+  flow(Path([[760, 560], [900, 560], [900, 250], [1060, 250]]), t, 10, 70, 3, '#ffb36a', 12);
+  // temperatures
+  txt('45 °C', 440, 556, 14, '#ff8a6a', 'center', 700, MONO);
+  txt('30 °C', 440, 662, 14, '#7cc8ff', 'center', 700, MONO);
+  txt('40 °C', 872, 420, 14, '#ff8a6a', 'right', 700, MONO);
+  txt('28 °C', 988, 470, 14, '#7cc8ff', 'left', 700, MONO);
+  txt('chip loop', 440, 610, 12, '#5d7398', 'center', 600, MONO);
+  txt('facility water loop', 930, 690, 12, '#5d7398', 'center', 600, MONO);
+  // cooler on roof
+  box(1060, 210, 400, 124, 8, '#1d2638', '#3e4c68', 1.5);
+  for (let f = 0; f < 4; f++) {
+    const fx = 1110 + f * 100, fy = 210;
+    ctx.beginPath(); ctx.ellipse(fx, fy, 38, 10, 0, 0, 6.29); ctx.fillStyle = '#0c121c'; ctx.fill(); ctx.strokeStyle = '#5a6a88'; ctx.stroke();
+    ctx.strokeStyle = '#9fb3d0'; ctx.lineWidth = 2;
+    for (let b = 0; b < 4; b++) { const an = t * 8 + b * 1.571 + f; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(an) * 34, fy + Math.sin(an) * 9); ctx.stroke(); }
+  }
+  for (let k = 0; k < 14; k++) { ctx.strokeStyle = 'rgba(255,140,90,.25)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(1075 + k * 27, 230); ctx.lineTo(1090 + k * 27, 320); ctx.stroke(); }
+  txt('Dry cooler / cooling tower', 1260, 300, 14, '#fff', 'center', 650);
+  for (let i = 0; i < 110; i++) {
+    const ph = (t * .22 + hash(i)) % 1;
+    const x = 1080 + hash(i + 2) * 360 + Math.sin(ph * 5 + i) * 20 + ph * 60, y = 200 - ph * 190;
+    ctx.globalAlpha = (1 - ph) * .2 * Math.min(1, ph * 10); ctx.globalCompositeOperation = 'lighter'; puff(x, y, 10 + ph * 40);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  txt('heat into the atmosphere ↗', 1050, 150, 14, '#ffb08a', 'right', 600);
+  // PUE card
+  const pa = ease(seg(t, 7.5, 8.5));
+  if (pa > 0) {
+    ctx.save(); ctx.globalAlpha = pa;
+    box(1090, 400, 400, 300, 12, 'rgba(10,16,30,.92)', '#2a3a5a');
+    txt('WHERE EACH 120 W GOES', 1110, 428, 12, '#8fa6c8', 'left', 800, MONO);
+    const bars = [['Computing (GPUs, CPUs, network)', 100, '#38f2a0'], ['Cooling (pumps, fans, chillers)', 14, '#5aa8ff'], ['Power conversion losses', 6, '#ffd24a']];
+    bars.forEach((b, i) => {
+      const y = 460 + i * 62, w = 320 * b[1] / 100 * ease(seg(t, 8 + i * .3, 9 + i * .3));
+      txt(b[0], 1110, y, 13, '#c9d4e6', 'left', 500);
+      box(1110, y + 12, Math.max(4, w), 18, 4, b[2]);
+      txt(`${b[1]} W`, 1115 + Math.max(4, w) + 4, y + 21, 12, b[2], 'left', 700, MONO);
+    });
+    txt('PUE ≈ 1.2  (total power ÷ computing power)', 1110, 668, 13, '#ffffff', 'left', 650, MONO);
+    ctx.restore();
+  }
+  // end card
+  const ea = ease(seg(t, 11.4, 12.6));
+  if (ea > 0) {
+    ctx.save(); ctx.globalAlpha = ea * .9; ctx.fillStyle = '#03050b'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = ea;
+    glow('rgba(120,200,255,.6)', 30);
+    txt('Electricity in. Heat out.', 800, 330, 60, '#ffffff', 'center', 800);
+    noGlow();
+    txt('And in between, quadrillions of multiplications a second —', 800, 410, 24, '#a9c3e6', 'center', 400);
+    txt('which is all an AI answer really is.', 800, 446, 24, '#a9c3e6', 'center', 400);
+    txt('restarting tour…', 800, 540, 14, '#4a5a7a', 'center', 600, MONO);
+    ctx.restore();
+  }
+}
+
+/* =====================================================================
+   TIMELINE
+   ===================================================================== */
+const SCENES = [
+  { name: 'The campus', dur: 15, draw: sCampus, caps: [
+    [0, 'An AI data centre looks like a warehouse. It behaves more like a power plant running in reverse.'],
+    [5, 'It pulls in 100+ megawatts — enough for a small city — and turns almost all of it into heat.'],
+    [10, 'Inside are rows of machines doing one thing, unbelievably fast: multiplying numbers.']] },
+  { name: 'Power', dur: 15, draw: sPower, caps: [
+    [0, 'Electricity arrives at transmission voltage and is stepped down, stage by stage, until it reaches the chip.'],
+    [5, 'Each step lowers the voltage and raises the current: a GPU runs on under 1 volt but draws around 1,000 amps.'],
+    [8.5, 'If the grid fails, batteries carry the whole load instantly…'],
+    [10.5, '…while backup generators roar to life. The GPUs never notice.']] },
+  { name: 'The data hall', dur: 15, draw: sHall, caps: [
+    [0, 'The data hall: long rows of racks, packed as tightly as power and cooling allow.'],
+    [4.5, 'Cool air comes in at the front of each rack; heat leaves at the back into a sealed hot aisle.'],
+    [9.5, 'AI racks are so dense that air alone can’t cool them, so liquid is piped to every server.']] },
+  { name: 'Inside a rack', dur: 15, draw: sRack, caps: [
+    [0, 'One rack: power shelves at top and bottom, compute trays and network switch trays in between.'],
+    [4.5, 'Each compute tray holds GPUs and CPUs. Liquid-filled cold plates sit directly on the hottest chips.'],
+    [10, 'Thousands of copper cables at the back tie 72 GPUs together so they act like one giant GPU.']] },
+  { name: 'Inside the chip', dur: 14, draw: sChip, caps: [
+    [0, 'Zoom into one GPU: a slab of silicon ringed by stacks of ultra-fast memory.'],
+    [3, 'Almost everything an AI model does is matrix multiplication: rows times columns, summed up.'],
+    [8, 'Tensor cores do whole blocks at once — around a quadrillion multiply-adds every second.']] },
+  { name: 'Training', dur: 15, draw: sNet, caps: [
+    [0, 'Big models are trained on tens of thousands of GPUs at once, wired together by a high-speed network.'],
+    [5, 'Each step, every GPU learns from its slice of data, then they all swap results (an “all-reduce”).'],
+    [10, 'Repeat that millions of times over weeks, and the model’s error slowly falls. That’s training.']] },
+  { name: 'Your question', dur: 15, draw: sPrompt, caps: [
+    [0, 'Now the part you see. You type a question…'],
+    [1, 'It crosses the internet, passes the front door, and a router picks a GPU server with spare room.'],
+    [3, '“Prefill”: the model reads your whole prompt in one parallel pass.'],
+    [4.6, '“Decode”: the answer is produced one token at a time, each streamed back the moment it exists.'],
+    [10.5, 'The same GPUs are answering hundreds of other people in the same batch, right now.']] },
+  { name: 'Heat out', dur: 16, draw: sHeat, caps: [
+    [0, 'Every watt that goes into a chip comes out as heat. It has to go somewhere.'],
+    [3.5, 'Liquid carries it from the cold plates to a heat exchanger, then out to coolers on the roof.'],
+    [7.5, 'Cooling and power conversion add roughly 10–30% on top of the computing itself.'],
+    [11.4, ' ']] },
+];
+
+let si = 0, st = 0, G = 0, paused = false, last = performance.now();
+// optional deep link: index.html#3 (chapter 3) or #3@6.5 (chapter 3 at 6.5 s)
+{ const m = location.hash.match(/^#(\d+)(?:@([\d.]+))?/); if (m) { si = clamp(+m[1] - 1, 0, SCENES.length - 1); st = +(m[2] || 0); } }
+function go(d) { si = (si + d + SCENES.length) % SCENES.length; st = 0; }
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') go(1);
+  else if (e.key === 'ArrowLeft') go(-1);
+  else if (e.key === ' ') { paused = !paused; e.preventDefault(); }
+});
+cv.addEventListener('click', () => go(1));
+
+function hud(sc, t) {
+  // top-left
+  txt('INSIDE AN AI DATA CENTRE', 40, 32, 12, '#5f7aa0', 'left', 800, MONO);
+  txt(String(si + 1).padStart(2, '0'), 40, 62, 22, '#7fd4ff', 'left', 700, MONO);
+  txt(sc.name, 76, 62, 24, '#ffffff', 'left', 700);
+  // top-right live stats
+  const mw = 142 + 3 * Math.sin(G * .4) + 1.2 * Math.sin(G * 2.1);
+  const rows = [
+    ['FACILITY LOAD', mw.toFixed(1) + ' MW'],
+    ['GPUs ONLINE', fmt(98304 - (Math.sin(G * .2) > .95 ? 8 : 0))],
+    ['TOKENS SERVED TODAY', fmt(8.41e9 + G * 1.37e6)],
+    ['INLET TEMP', (24.4 + .4 * Math.sin(G * .5)).toFixed(1) + ' °C'],
+  ];
+  rows.forEach((r, i) => {
+    txt(r[1], 1560, 30 + i * 20, 13, '#cfe6ff', 'right', 700, MONO);
+    txt(r[0], 1560 - 130, 30 + i * 20, 11, '#5f7aa0', 'right', 700, MONO);
+  });
+  // caption
+  let ci = 0; for (let i = 0; i < sc.caps.length; i++) if (t >= sc.caps[i][0]) ci = i;
+  const [ct, s] = sc.caps[ci];
+  if (s.trim()) {
+    const a = seg(t, ct, ct + .5) * (1 - seg(t, sc.dur - .6, sc.dur));
+    const lines = wrap(s, 1160, 23, 500), h = lines.length * 32 + 26;
+    ctx.save(); ctx.globalAlpha = a;
+    const top = 836 - h / 2 + (1 - a) * 8;
+    box(190, top, 1220, h, 14, 'rgba(6,10,20,.82)', 'rgba(120,170,255,.2)');
+    lines.forEach((l, i) => txt(l, 800, top + 13 + 16 + i * 32, 23, '#eef4ff', 'center', 500));
+    ctx.restore();
+  }
+  // progress
+  const n = SCENES.length, sw = 90, gap = 8, x0 = 800 - (n * sw + (n - 1) * gap) / 2;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + i * (sw + gap);
+    box(x, 884, sw, 4, 2, 'rgba(255,255,255,.12)');
+    const f = i < si ? 1 : i === si ? t / sc.dur : 0;
+    if (f > 0) box(x, 884, sw * f, 4, 2, '#7fd4ff');
+  }
+  txt(paused ? '❚❚ paused · space to resume' : '← → chapters · space pause', 1580, 886, 11, '#3f5070', 'right', 600, MONO);
+}
+
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (!paused) { st += dt; G += dt; }
+  let sc = SCENES[si];
+  if (st >= sc.dur) { go(1); sc = SCENES[si]; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#04060c'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * OX, DPR * OY);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  ctx.save(); sc.draw(st, sc.dur); ctx.restore();
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  const fade = 1 - Math.min(seg(st, 0, .7), 1 - seg(st, sc.dur - .7, sc.dur));
+  if (fade > 0) { ctx.fillStyle = `rgba(4,6,12,${fade})`; ctx.fillRect(0, 0, W, H); }
+  hud(sc, st);
+  ctx.restore();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

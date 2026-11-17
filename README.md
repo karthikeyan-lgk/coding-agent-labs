@@ -6,10 +6,11 @@ Runnable labs from the Observability Labs videos on tracing and monitoring AI co
 | Folder | Video |
 | --- | --- |
 | [claude-code-ci](claude-code-ci/) | [Claude Code in CI: Trace Every Headless Run with OpenTelemetry](https://www.youtube.com/watch?v=I__8dSsPuyE) |
-| [usage-limits](usage-limits/) | [Claude Isn't Counting Your Words (Claude Code Usage Limits, Measured)](https://www.youtube.com/watch?v=EaB4RY5l5ko) |
+| [usage-limits](usage-limits/) | [Claude Isn't Counting Your Words (How to Save Tokens in Claude Code)](https://www.youtube.com/watch?v=EaB4RY5l5ko) |
 | [background-agents](background-agents/) | [Claude Code Read 52,000 Tokens to Write 4 Words](https://www.youtube.com/watch?v=W1q4JKqgd2A) |
-| [graphify](graphify/) | [Graphify Didn't Save Me Tokens in Claude Code (160 Runs Measured)](https://www.youtube.com/watch?v=qugfWfvr6rA) |
-| [video-builds](video-builds/) | Claude Code Video Editing: I Made a 3D Short From One Text File (video coming soon) |
+| [graphify](graphify/) | [Graphify’s 71x Claim: Tested with 160 Claude Code Runs](https://www.youtube.com/watch?v=qugfWfvr6rA) |
+| [video-builds](video-builds/) | [Claude Code Animation: I Made a 3D Short From One Text File](https://www.youtube.com/watch?v=xGFiqQWwP-w) |
+| [fable-vs-opus](fable-vs-opus/) | [Fable 5.2 vs Opus 5.5 in Claude Code: Same 5 Prompts, Measured](https://www.youtube.com/watch?v=CeH4KlnmQtY) |
 
 Everything runs locally with Docker. Claude Code telemetry carries your email and account IDs; every lab's
 Collector deletes them before anything is stored.

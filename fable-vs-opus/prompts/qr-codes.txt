@@ -1,0 +1,1 @@
+Build an interactive explainer on how QR codes hold and repair a message. Render fully in the browser using Three.js. Include treatment for visuals and sound design.

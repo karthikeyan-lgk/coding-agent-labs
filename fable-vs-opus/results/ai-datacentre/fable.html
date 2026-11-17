@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inside an AI data centre</title>
+<style>
+  :root{
+    --bg:#060a14; --ink:#e4eaf6; --dim:#8d9ab4; --line:rgba(255,255,255,.12);
+    --power:#ffc247; --data:#4de3ff; --cold:#5b9bff; --warm:#ff7252; --gpu:#b58cff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  #top{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;
+    padding:16px 24px;pointer-events:none;background:linear-gradient(#060a14e6,#060a1400)}
+  #brand{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);font-weight:600;padding-top:4px}
+  #brand b{color:var(--ink)}
+  #gauges{display:flex;gap:22px}
+  .g{text-align:right}
+  .g .l{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .g .v{font-size:15px;font-variant-numeric:tabular-nums;margin-top:2px}
+
+  #scrim{position:fixed;left:0;right:0;bottom:0;height:270px;pointer-events:none;
+    background:linear-gradient(#060a1400,#060a14e0 32%,#060a14 70%)}
+  #cap{position:fixed;left:24px;bottom:62px;width:min(640px,calc(100vw - 360px));pointer-events:none}
+  #kick{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--data);font-weight:700;min-height:14px}
+  #head{font-size:clamp(22px,2.6vw,32px);font-weight:700;margin:6px 0 8px;letter-spacing:-.01em;text-wrap:balance}
+  #body{font-size:15.5px;line-height:1.5;color:#c3cde0;margin:0;text-wrap:pretty;min-height:4.5em}
+  #cap.sw #head,#cap.sw #body,#cap.sw #kick{opacity:0;transform:translateY(6px)}
+  #head,#body,#kick{transition:opacity .35s,transform .35s}
+
+  #chat{position:fixed;right:24px;bottom:66px;width:290px;background:#0c1322e6;border:1px solid var(--line);
+    border-radius:14px;padding:12px 12px 10px;backdrop-filter:blur(6px);pointer-events:none}
+  #chat .t{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between}
+  .bub{font-size:13.5px;line-height:1.4;border-radius:12px;padding:7px 10px;margin-top:6px;min-height:33px;overflow-wrap:anywhere}
+  #q{background:#1b3a66;margin-left:38px;border-bottom-right-radius:3px}
+  #a{background:#1a2135;margin-right:20px;border-bottom-left-radius:3px;min-height:71px}
+  #q.empty{background:transparent;border:1px dashed var(--line);color:var(--dim)}
+
+  #bar{position:fixed;left:0;right:0;bottom:0;height:52px;display:flex;align-items:center;gap:14px;padding:0 24px;
+    background:linear-gradient(#060a1400,#060a14 45%)}
+  #pp{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:#111a2c;color:var(--ink);
+    cursor:pointer;font-size:12px;flex:none;display:grid;place-items:center;padding:0}
+  #pp:hover{background:#1a2742}
+  #pp:focus-visible,.seg:focus-visible{outline:2px solid var(--data);outline-offset:2px}
+  #segs{flex:1;display:flex;gap:4px;min-width:0}
+  .seg{cursor:pointer;min-width:0;padding:6px 0 8px;background:none;border:0;color:inherit;font:inherit;text-align:left}
+  .seg span{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;margin-bottom:5px}
+  .seg i{display:block;height:4px;border-radius:2px;background:#1c2740;overflow:hidden}
+  .seg i u{display:block;height:100%;width:0;background:var(--data)}
+  .seg.on span{color:var(--ink)}
+  .seg:hover i{background:#2a3a5e}
+  #legend{display:flex;gap:12px;font-size:11px;color:var(--dim);flex:none;white-space:nowrap}
+  #legend b{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+
+  @media (max-width:1100px){#legend{display:none}}
+  @media (max-width:900px){#gauges{display:none} #cap{width:calc(100vw - 48px)} #chat{bottom:auto;top:44px;right:12px;width:230px}
+    #a{min-height:33px}}
+  @media (max-width:560px){.seg span{display:none} #body{font-size:14px} #cap{left:16px;width:calc(100vw - 32px)} #bar{padding:0 16px}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="top">
+  <div id="brand"><b>Inside an AI data centre</b></div>
+  <div id="gauges">
+    <div class="g"><div class="l">Power draw</div><div class="v mono" id="gP">112 MW</div></div>
+    <div class="g"><div class="l">Source</div><div class="v mono" id="gS">Grid</div></div>
+    <div class="g"><div class="l">Coolant in / out</div><div class="v mono" id="gC">30 / 44 °C</div></div>
+    <div class="g"><div class="l">GPU load</div><div class="v mono" id="gU">87 %</div></div>
+  </div>
+</div>
+
+<div id="scrim"></div>
+<div id="cap">
+  <div id="kick"></div>
+  <h1 id="head"></h1>
+  <p id="body"></p>
+</div>
+
+<div id="chat">
+  <div class="t"><span>A screen, far away</span><span id="st"></span></div>
+  <div class="bub empty" id="q"></div>
+  <div class="bub" id="a"></div>
+</div>
+
+<div id="bar">
+  <button id="pp" title="Pause / play (space)" aria-label="Pause">❚❚</button>
+  <div id="segs"></div>
+  <div id="legend">
+    <span><b style="background:var(--power)"></b>power</span>
+    <span><b style="background:var(--data)"></b>data</span>
+    <span><b style="background:var(--cold)"></b>cool liquid</span>
+    <span><b style="background:var(--warm)"></b>warm liquid</span>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const TAU = Math.PI * 2;
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const $ = id => document.getElementById(id);
+
+const C = { power: '#ffc247', data: '#4de3ff', cold: '#5b9bff', warm: '#ff7252', gpu: '#b58cff', ok: '#6dffb0' };
+
+/* ---------- world geometry ---------- */
+const G = 1000;                               // ground level
+const RX0 = 1020, RP = 108, RW = 84, RH = 280, RY = 720, NR = 10, HERO = 4;
+const rackX = i => RX0 + i * RP;
+const HR = rackX(HERO);
+const trayY = j => RY + 58 + j * 27;
+const HT = 3, HG = 1;
+const chip = { x: HR + 16 + HG * 14, y: trayY(HT) + 7, w: 12, h: 9 };
+const WIDE = [1700, 700, 3400, 1080];
+
+const QUESTION = 'Why is the sky blue?';
+const PROMPT_TOK = ['Why', 'is', 'the', 'sky', 'blue', '?'];
+const STEPS = [
+  ['Sunlight', ['The', 'Because', 'Blue', 'It']],
+  [' scatters', [' is', ' hits', ' contains', ' passes']],
+  [' off', [' in', ' when', ' through', ' as']],
+  [' air', [' the', ' gas', ' tiny', ' dust']],
+  [' molecules', [' particles', ',', ' in', ' and']],
+  [',', ['.', ' in', ' and', ' —']],
+  [' and', [' with', ' but', ' so', ' which']],
+  [' blue', [' shorter', ' the', ' violet', ' short']],
+  [' light', [' wavelengths', ' waves', ' is', ' rays']],
+  [' scatters', [' is', ' gets', ' bounces', ' has']],
+  [' the', [' most', ' more', ' far', ' much']],
+  [' most', [' strongest', ' best', ' furthest', ' easiest']],
+  ['.', [' strongly', ' of', ' easily', '!']],
+];
+const ANSWER = STEPS.map(s => s[0]).join('');
+const STEP_T = 0.9, GEN_AT = 3.0;
+
+/* ---------- chapters ---------- */
+const CH = [
+  { n: 'Intro', d: 8, k: 'A guided tour · plays on a loop',
+    h: 'Inside an AI data centre',
+    p: 'A warehouse-sized computer. Electricity and questions go in; answers and heat come out. Let’s follow one question all the way through.',
+    shots: [{ r: WIDE }] },
+  { n: 'Arrive', d: 10, k: '1 · A question arrives',
+    h: 'It comes in as light',
+    p: 'Someone types “Why is the sky blue?”. A few hundredths of a second later it reaches the building as laser pulses in a glass fibre thinner than a hair, buried under the car park.',
+    shots: [{ r: [2760, 960, 1350, 560] }] },
+  { n: 'Route', d: 9, k: '2 · Traffic control',
+    h: 'Find a free machine',
+    p: 'Routers and load balancers in the network room pick a server with spare capacity and send the question along the overhead fibre tray. Millions of other requests are doing the same.',
+    shots: [{ r: [1840, 800, 1300, 560] }] },
+  { n: 'Hall', d: 10, k: '3 · The data hall',
+    h: 'Rows and rows of racks',
+    p: 'This is the heart of the building. One AI rack can draw over 100 kilowatts, roughly what a hundred homes use, and weighs about as much as a car. A big site has thousands of them.',
+    shots: [{ r: [1560, 800, 1260, 560] }] },
+  { n: 'Rack', d: 11, k: '4 · Inside a rack',
+    h: 'Trays of GPUs, stacked',
+    p: 'Each tray holds several GPUs, the chips that do the thinking. Switches at the top link them together, a power shelf feeds them, and pipes down each side bring coolant in cold and take it out warm.',
+    shots: [{ r: [HR + 42, RY + 140, 170, 310] }] },
+  { n: 'GPU', d: 16, k: '5 · Inside a GPU',
+    h: 'Thinking is multiplication',
+    p: 'The model is billions of numbers held in the chip’s memory. The question becomes numbers too, and is multiplied through layer after layer. Out comes a score for every possible next word. One is picked, added on, and the whole thing runs again.',
+    shots: [{ r: [chip.x + 6, chip.y + 4.5, 13.2, 10.2], tr: 3 }] },
+  { n: 'Power', d: 14, k: '6 · Power',
+    h: 'As hungry as a small city',
+    p: 'All that arithmetic runs on electricity. High-voltage lines feed transformers, then switchgear, then the racks. If the grid drops, batteries carry the load for the seconds it takes the backup generators to start. The chips never notice.',
+    shots: [{ r: [520, 790, 1200, 640], tr: 3.2 }] },
+  { n: 'Cooling', d: 14, k: '7 · Cooling',
+    h: 'Every watt becomes heat',
+    p: 'Nearly all of that electricity ends up as heat. Liquid flows through cold plates sitting directly on the chips, carries the heat under the floor to heat exchangers, and cooling towers outside release it into the air.',
+    shots: [{ r: [HR + 42, 900, 380, 340] }, { at: 5, r: [2790, 790, 1150, 720], tr: 3 }] },
+  { n: 'Training', d: 11, k: '8 · Training vs. answering',
+    h: 'The whole hall as one machine',
+    p: 'Answering a question borrows a few chips for a moment. Training a new model is different: tens of thousands of GPUs work in step for weeks, constantly swapping results, slowly nudging those billions of numbers into shape.',
+    shots: [{ r: [1560, 740, 1260, 660] }] },
+  { n: 'Reply', d: 10, k: '9 · The answer leaves',
+    h: 'Back out the way it came',
+    p: 'The words stream back down the fibre as they are produced. From “enter” to the first word on screen: usually under a second.',
+    shots: [{ r: WIDE, tr: 3 }] },
+];
+let TOTAL = 0;
+const SH = [];
+CH.forEach(c => { c.t0 = TOTAL; c.shots.forEach(s => SH.push({ t: TOTAL + (s.at || 0), r: s.r, tr: s.tr || 2.6 })); TOTAL += c.d; });
+
+/* ---------- paths ---------- */
+const quad = (p0, c, p1, n = 14) => { const o = []; for (let i = 0; i <= n; i++) { const t = i / n, u = 1 - t; o.push([u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1]]); } return o; };
+const PYL = [[40, 650], [140, 650], [140, 710]];
+const WIRES = PYL.map((a, k) => {
+  const end = [262 + k * 76, 800];
+  return quad([-700, a[1] - 10], [-330, a[1] + 70], a, 16).concat(quad(a, [(a[0] + end[0]) / 2, a[1] + 110], end, 10).slice(1));
+});
+const P_SUB_SW = [[340, 1000], [340, 1050], [757, 1050], [757, 1000]];
+const P_GEN_SW = [[565, 1000], [565, 1078], [735, 1078], [735, 1000]];
+const P_BUS = [[757, 800], [757, 770], [848, 770], [848, 640], [2110, 640]];
+const P_BATT = [[932, 840], [932, 800], [870, 800], [870, 820]];
+const P_FIBRE_IN = [[3500, 1120], [2270, 1120], [2270, 1000], [2270, 900]];
+const P_TRAY = [[2200, 790], [2200, 680], [1040, 680]];
+const P_SUPPLY = [[2425, 1000], [2425, 1026], [RX0 + 5.5, 1026]];
+const P_RETURN = [[RX0 + 78.5, 1048], [2455, 1048], [2455, 1000]];
+const P_FWARM = [[2520, 900], [3210, 900]];
+const P_FCOOL = [[3210, 940], [2520, 940]];
+const P_Q1 = P_FIBRE_IN;
+const P_Q2 = [[2270, 900], [2200, 900], [2200, 680], [HR + 62, 680], [HR + 62, RY + 13]];
+const P_Q3 = [[HR + 62, RY + 13], [HR + 73.5, RY + 13], [HR + 73.5, chip.y + 4.5], [chip.x + 6, chip.y + 4.5]];
+const P_OUT = P_Q3.slice().reverse().concat(P_Q2.slice().reverse().slice(1), P_Q1.slice().reverse().slice(1));
+function ptFrac(pts, u) {
+  let L = 0; const ls = [];
+  for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); ls.push(l); L += l; }
+  let d = clamp(u) * L;
+  for (let i = 0; i < ls.length; i++) { if (d <= ls[i] || i === ls.length - 1) { const t = ls[i] ? d / ls[i] : 0; return [lerp(pts[i][0], pts[i + 1][0], t), lerp(pts[i][1], pts[i + 1][1], t)]; } d -= ls[i]; }
+  return pts[0];
+}
+
+/* ---------- canvas / state ---------- */
+const cv = $('c'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1, S = 1, CX = 0, CY = 0, OX = 0, OY = 0;
+let T = 0, st = 0, playing = true, ci = 0, lt = 0, trainMix = 0;
+function resize() { DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); }
+addEventListener('resize', resize); resize();
+
+const win = (i, a, b, f = .5) => { if (ci !== i) return 0; if (b === undefined) b = CH[i].d; return clamp((lt - a) / f) * clamp((b - lt) / f); };
+
+function camOf(r) {
+  const top = W <= 900 ? 150 : 60, bot = clamp(H * .3, 170, 235), ha = Math.max(120, H - top - bot);
+  return { s: Math.min(W / r[2], ha / r[3]), x: r[0], y: r[1], oy: top + ha / 2 };
+}
+function setCam() {
+  let i = 0; for (let k = 0; k < SH.length; k++) if (SH[k].t <= st) i = k;
+  const cur = SH[i], prev = SH[(i - 1 + SH.length) % SH.length];
+  const a = camOf(prev.r), b = camOf(cur.r), e = ease(clamp((st - cur.t) / cur.tr));
+  S = Math.exp(lerp(Math.log(a.s), Math.log(b.s), e));
+  let k = e;
+  if (Math.abs(Math.log(b.s / a.s)) > .05) k = (1 / S - 1 / a.s) / (1 / b.s - 1 / a.s);
+  CX = lerp(a.x, b.x, k); CY = lerp(a.y, b.y, k);
+  OX = W / 2; OY = b.oy;
+}
+const w2s = (x, y) => [(x - CX) * S + OX, (y - CY) * S + OY];
+const worldT = () => ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * (OX - CX * S), DPR * (OY - CY * S));
+const screenT = () => ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+/* ---------- drawing helpers ---------- */
+const R = (x, y, w, h, f) => { ctx.fillStyle = f; ctx.fillRect(x, y, w, h); };
+const SR = (x, y, w, h, c, lw = 1) => { ctx.strokeStyle = c; ctx.lineWidth = Math.max(lw, 1 / S); ctx.strokeRect(x, y, w, h); };
+function line(pts, col, w, a = 1) {
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(w, 1.1 / S); ctx.globalAlpha = a; ctx.stroke(); ctx.globalAlpha = 1;
+}
+function pipe(pts, col, w) { line(pts, '#05080f', w + 4); line(pts, col, w); }
+function dots(pts, speed, gap, r, ph) {
+  let d = (((T * speed + ph * gap) % gap) + gap) % gap;
+  ctx.beginPath();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i][0], ay = pts[i][1], bx = pts[i + 1][0], by = pts[i + 1][1], L = Math.hypot(bx - ax, by - ay);
+    if (!L) continue;
+    while (d <= L) { const u = d / L, x = ax + (bx - ax) * u, y = ay + (by - ay) * u; ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); d += gap; }
+    d -= L;
+  }
+  ctx.fill();
+}
+function flow(pts, col, speed, gap, r, a = 1, ph = 0) {
+  if (a <= .01) return;
+  while (gap * S < 10) gap *= 2;
+  r = Math.max(r, 1.5 / S);
+  ctx.fillStyle = col;
+  ctx.globalAlpha = .2 * a; dots(pts, speed, gap, r * 2.6, ph);
+  ctx.globalAlpha = a; dots(pts, speed, gap, r, ph);
+  ctx.globalAlpha = 1;
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+/* ---------- state helpers ---------- */
+function pstate() { if (ci !== 6 || lt < 5 || lt >= 11.5) return 'grid'; return lt < 8.5 ? 'batt' : 'gen'; }
+function genState() {
+  if (ci < 5) return { n: 0, k: -1, ph: 0 };
+  if (ci > 5) return { n: STEPS.length, k: -1, ph: 0 };
+  const u = (lt - GEN_AT) / STEP_T; if (u < 0) return { n: 0, k: -1, ph: 0 };
+  const k = Math.floor(u); if (k >= STEPS.length) return { n: STEPS.length, k: -1, ph: 0 };
+  return { n: k, k, ph: u - k };
+}
+function act(i, j, g) {
+  const n = i * 97 + j * 13 + g * 5;
+  const b = .5 + .5 * Math.sin(T * (1.2 + hash(n) * 3) + hash(n + 1) * TAU);
+  const tr = Math.pow(.5 + .5 * Math.sin(T * 5.5 - i * .12), 2);
+  return lerp(b * b, tr, trainMix);
+}
+
+/* ---------- scene parts ---------- */
+const STARS = Array.from({ length: 170 }, (_, i) => [hash(i) * 4400 - 500, hash(i + 500) * 760 - 180, hash(i + 900)]);
+function drawSky() {
+  const g = ctx.createLinearGradient(0, -200, 0, G);
+  g.addColorStop(0, '#050812'); g.addColorStop(.6, '#0a1226'); g.addColorStop(1, '#16203a');
+  ctx.fillStyle = g; ctx.fillRect(-4000, -3000, 12000, 3000 + G);
+  if (S < 4) {
+    ctx.fillStyle = '#cfdcff';
+    for (const s of STARS) { ctx.globalAlpha = .25 + .55 * s[2] * (.6 + .4 * Math.sin(T * (1 + s[2] * 2) + s[2] * 40)); const z = (s[2] > .8 ? 2 : 1.2) / S; ctx.fillRect(s[0], s[1], z, z); }
+    ctx.globalAlpha = 1;
+    // distant hills
+    ctx.fillStyle = '#0c1428'; ctx.beginPath(); ctx.moveTo(-4000, G);
+    for (let x = -4000; x <= 8000; x += 120) ctx.lineTo(x, G - 60 - 50 * Math.sin(x * .0021) - 28 * Math.sin(x * .0057 + 1));
+    ctx.lineTo(8000, G); ctx.fill();
+  }
+  // ground
+  const gg = ctx.createLinearGradient(0, G, 0, G + 400);
+  gg.addColorStop(0, '#0d1424'); gg.addColorStop(1, '#070a13');
+  ctx.fillStyle = gg; ctx.fillRect(-4000, G, 12000, 4000);
+  R(-4000, G, 12000, 3, '#26324e');
+  if (S < 6) { ctx.globalAlpha = .5; for (let k = 0; k < 5; k++) R(-4000, G + 60 + k * 45, 12000, 1.2, '#0f1729'); ctx.globalAlpha = 1; }
+}
+
+function drawPylon(live) {
+  const c = '#3a4a6e';
+  line([[60, G], [84, 620], [90, 596], [96, 620], [120, G]], c, 3);
+  for (let k = 0; k < 7; k++) { const y0 = G - k * 52, y1 = y0 - 52, w0 = 30 - k * 3.4, w1 = 30 - (k + 1) * 3.4; line([[90 - w0, y0], [90 + w1, y1], [90 - w1, y1], [90 + w0, y0]], c, 1.4); }
+  line([[30, 650], [150, 650]], c, 3); line([[70, 710], [150, 710]], c, 3);
+  line([[30, 650], [86, 632], [150, 650]], c, 1.4);
+  const wc = live ? '#8d7a4a' : '#39415a';
+  for (const w of WIRES) line(w, wc, 1.6);
+  for (const a of PYL) R(a[0] - 2, a[1], 4, 12, '#9aa6c0');
+}
+function drawSubstation() {
+  ctx.globalAlpha = .55;
+  for (let x = 190; x <= 450; x += 20) R(x, 962, 1.5, 38, '#2f3d5e');
+  R(190, 966, 260, 1.5, '#2f3d5e'); R(190, 984, 260, 1.5, '#2f3d5e'); ctx.globalAlpha = 1;
+  R(232, 800, 6, 200, '#34435f'); R(444, 800, 6, 200, '#34435f'); R(226, 796, 230, 6, '#3d4d70');
+  [262, 350].forEach((tx, t) => {
+    for (let b = 0; b < 3; b++) { const bx = tx + 12 + b * 18; line([[bx, 802], [bx, 880]], '#6b6248', 1.2); R(bx - 2.5, 878, 5, 26, '#9aa6c0'); for (let q = 0; q < 3; q++) R(bx - 4, 882 + q * 7, 8, 2, '#c7d0e2'); }
+    R(tx, 904, 62, 96, '#1c2740'); SR(tx, 904, 62, 96, '#34456b');
+    for (let f = 0; f < 6; f++) R(tx + 5 + f * 9, 924, 5, 68, '#27365a');
+    R(tx + 22, 910, 18, 8, '#0b101c'); R(tx + 24, 912, 4 + 10 * (.5 + .5 * Math.sin(T * 2 + t)), 4, C.power);
+  });
+}
+function drawGenerators(ps) {
+  [470, 572].forEach((gx, k) => {
+    const run = ps === 'gen', crank = ps === 'batt';
+    const sh = (run ? .6 : crank ? .35 : 0) * Math.sin(T * 70 + k);
+    R(gx + 62, 893, 8, 34, '#2a3550'); R(gx + 60, 890, 12, 4, '#3a4868');
+    R(gx, 926 + sh, 88, 74, '#1b2536'); SR(gx, 926 + sh, 88, 74, '#34456b');
+    for (let l = 0; l < 6; l++) R(gx + 8, 938 + l * 8 + sh, 36, 3, '#0d1422');
+    R(gx + 54, 940 + sh, 24, 16, '#0b101c');
+    R(gx + 57, 943 + sh, 6, 6, run ? C.ok : crank ? (Math.sin(T * 14) > 0 ? C.power : '#3b3420') : '#2c3852');
+    if (run || crank) for (let p = 0; p < 6; p++) {
+      const age = (T * .5 + p / 6 + k * .3) % 1;
+      ctx.globalAlpha = (1 - age) * (run ? .22 : .1); ctx.fillStyle = '#9aa4b8';
+      ctx.beginPath(); ctx.arc(gx + 66 + age * 50 + Math.sin(p * 5 + age * 5) * 8, 888 - age * 150, 7 + age * 30, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawBuilding(ps) {
+  // trench + shell
+  R(980, G + 10, 1720, 56, '#070b15');
+  R(700, 560, 2000, 440, '#0b1120');
+  // ceiling lights
+  if (S < 8) for (let x = 760; x < 2680; x += 172) {
+    ctx.fillStyle = 'rgba(150,185,255,.035)'; ctx.beginPath(); ctx.moveTo(x, 566); ctx.lineTo(x + 56, 566); ctx.lineTo(x + 130, G); ctx.lineTo(x - 74, G); ctx.fill();
+    R(x, 562, 56, 4, '#b9cdfa');
+  }
+  R(686, 538, 2028, 22, '#232e47'); R(686, 534, 2028, 4, '#33415f');
+  R(696, 560, 8, 440, '#1c2740'); R(2696, 560, 8, 440, '#1c2740');
+  [980, 2140, 2380].forEach(x => R(x - 4, 560, 8, 440, '#182238'));
+  R(696, G, 2008, 10, '#232e47');
+  if (S > .7 && S < 8) for (let x = 1000; x < 2130; x += 27) R(x, G + 1, 1, 8, '#161f33');
+  // rooftop units
+  for (let k = 0; k < 6; k++) { const x = 1100 + k * 170; R(x, 516, 70, 22, '#1a2439'); R(x + 6, 520, 58, 3, '#0d1422'); R(x + 6, 527, 58, 3, '#0d1422'); }
+
+  /* electrical room */
+  R(722, 800, 70, 200, '#182236'); SR(722, 800, 70, 200, '#34456b');
+  for (let k = 0; k < 3; k++) { R(730, 814 + k * 58, 54, 44, '#101827'); R(736, 820 + k * 58, 14, 9, '#0a0f1a'); R(737, 821 + k * 58, 4 + 8 * (.5 + .5 * Math.sin(T * 3 + k * 2)), 7, C.power); R(772, 822 + k * 58, 5, 5, C.ok); }
+  [806, 852].forEach((x, k) => { R(x, 820, 40, 180, '#172033'); SR(x, 820, 40, 180, '#34456b'); R(x + 6, 832, 28, 16, '#0a0f1a'); R(x + 8, 835, 24 * (.7 + .25 * Math.sin(T * 1.7 + k)), 4, ps === 'grid' ? C.ok : C.power); R(x + 8, 842, 16, 3, '#2f6fd0'); for (let l = 0; l < 8; l++) R(x + 6, 880 + l * 12, 28, 2, '#0d1422'); });
+  // batteries
+  R(902, 840, 60, 160, '#141d2f'); SR(902, 840, 60, 160, '#34456b');
+  const lvl = ci === 6 ? (lt < 5 ? 1 : lt < 8.5 ? 1 - (lt - 5) / 3.5 * .3 : clamp(.7 + (lt - 8.5) / 5.5 * .3)) : 1;
+  for (let rw = 0; rw < 5; rw++) for (let c = 0; c < 3; c++) {
+    const bx = 907 + c * 18, by = 848 + rw * 30; R(bx, by, 14, 22, '#0a0f1a'); R(bx + 5, by - 2, 4, 2, '#56637f');
+    const h = 18 * lvl; R(bx + 2, by + 2 + (18 - h), 10, h, ps === 'batt' ? C.power : '#39c98a');
+  }
+  line(P_BATT, ps === 'batt' ? C.power : '#4e4628', 2);
+
+  /* network room */
+  [2170, 2240].forEach((x, k) => {
+    R(x, 790, 60, 210, '#141d30'); SR(x, 790, 60, 210, '#34456b');
+    for (let u = 0; u < 12; u++) {
+      R(x + 5, 798 + u * 16.5, 50, 12, '#0c1220');
+      if (S > .8) for (let p = 0; p < 10; p++) { const on = hash(k * 999 + u * 31 + p + Math.floor(T * (3 + hash(u * 7 + p) * 9))) > .35; ctx.fillStyle = on ? (p % 4 ? C.data : C.ok) : '#1a2a40'; ctx.fillRect(x + 8 + p * 4.6, 802 + u * 16.5, 2.6, 2.6); }
+    }
+  });
+  line([[2230, 900], [2240, 900]], C.data, 1.5, .6);
+  drawTech(2332, G);
+
+  /* mechanical room */
+  R(2410, 850, 110, 150, '#162034'); SR(2410, 850, 110, 150, '#34456b');
+  for (let p = 0; p < 9; p++) { const x = 2420 + p * 10.5; R(x, 864, 4, 122, p % 2 ? '#7a3324' : '#1f447f'); }
+  R(2410, 850, 110, 8, '#243150');
+  [2584, 2650].forEach((x, k) => {
+    R(x - 26, 962, 52, 38, '#172135'); ctx.fillStyle = '#1e2a44'; ctx.beginPath(); ctx.arc(x, 940, 24, 0, TAU); ctx.fill(); SR(0, 0, 0, 0, '#3a4c74');
+    ctx.strokeStyle = '#3a4c74'; ctx.lineWidth = Math.max(2, 1 / S); ctx.beginPath(); ctx.arc(x, 940, 24, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = '#8fb4ff'; ctx.lineWidth = Math.max(2.4, 1 / S);
+    for (let b = 0; b < 3; b++) { const a = T * 6 + k + b * TAU / 3; ctx.beginPath(); ctx.moveTo(x, 940); ctx.lineTo(x + Math.cos(a) * 17, 940 + Math.sin(a) * 17); ctx.stroke(); }
+  });
+}
+function drawTech(x, y) {
+  const b = Math.sin(T * 1.3) * 1.2;
+  R(x - 9, y - 62, 7, 62, '#27324c'); R(x + 2, y - 62, 7, 62, '#27324c');
+  ctx.fillStyle = '#e7a13a'; rr(x - 12, y - 118 + b, 24, 60, 6); ctx.fill();
+  R(x - 12, y - 96 + b, 24, 4, '#f4f0d0');
+  ctx.fillStyle = '#d9b99a'; ctx.beginPath(); ctx.arc(x, y - 130 + b, 10, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#f2f4f8'; ctx.beginPath(); ctx.arc(x, y - 133 + b, 10.5, Math.PI, TAU); ctx.fill();
+  R(x - 26, y - 100 + b, 16, 5, '#e7a13a'); R(x - 32, y - 108 + b, 9, 14, '#9fe8ff');
+}
+
+function drawPipes(ps) {
+  // underground power
+  pipe(P_SUB_SW, ps === 'grid' ? '#8a6c22' : '#3b3524', 5);
+  pipe(P_GEN_SW, ps === 'gen' ? '#8a6c22' : '#3b3524', 5);
+  // fibre conduit
+  pipe(P_FIBRE_IN, '#123a48', 7); line(P_FIBRE_IN, C.data, 1.4, .8);
+  // busbar + drops
+  line(P_BUS, '#05080f', 9); line(P_BUS, '#7b6124', 5);
+  // fibre tray
+  line(P_TRAY, '#0d2b36', 6); line(P_TRAY, C.data, 1.3, .75);
+  if (S > .6 && S < 8) for (let x = 1050; x < 2200; x += 24) R(x, 676, 1.2, 8, '#2b4654');
+  // facility loop
+  pipe(P_FWARM, '#8a3626', 9); pipe(P_FCOOL, '#234c8f', 9);
+  // technology loop
+  for (let i = 0; i < NR; i++) { const x = rackX(i); pipe([[x + 78.5, G - 2], [x + 78.5, 1048]], '#8a3626', 4); }
+  pipe(P_RETURN, '#8a3626', 8);
+  for (let i = 0; i < NR; i++) { const x = rackX(i); pipe([[x + 5.5, G - 2], [x + 5.5, 1026]], '#234c8f', 4); }
+  pipe(P_SUPPLY, '#234c8f', 8);
+  for (let i = 0; i < NR; i++) { const x = rackX(i); line([[x + 22, 640], [x + 22, RY]], '#7b6124', 2.5); line([[x + 62, 680], [x + 62, RY]], C.data, 1.2, .7); }
+}
+
+function drawRack(i) {
+  const x = rackX(i), det = S > .9, fine = S > 1.45;
+  R(x, RY, RW, RH, '#0e1525'); SR(x, RY, RW, RH, '#2c3a5a', .8);
+  R(x + 3, RY + 54, 5, RH - 54, '#234c8f'); R(x + 76, RY + 54, 5, RH - 54, '#8a3626');
+  for (let k = 0; k < 2; k++) {
+    const y = RY + 8 + k * 14; R(x + 12, y, 60, 11, '#13233a');
+    if (det) for (let p = 0; p < 13; p++) { const on = hash(i * 71 + k * 17 + p + Math.floor(T * (4 + hash(p + i) * 8))) > .3; ctx.fillStyle = on ? C.data : '#17324a'; ctx.fillRect(x + 15 + p * 4.3, y + 3, 2.4, 2); ctx.fillRect(x + 15 + p * 4.3, y + 6.5, 2.4, 2); }
+  }
+  R(x + 12, RY + 38, 60, 14, '#231e10');
+  for (let m = 0; m < 5; m++) { R(x + 14 + m * 11.6, RY + 40, 9.6, 10, '#3a3016'); if (det) R(x + 16 + m * 11.6, RY + 42, 5.6, 1.6, C.power); }
+  for (let j = 0; j < 8; j++) {
+    const ty = trayY(j);
+    R(x + 12, ty, 60, 23, '#121a2b');
+    if (det) SR(x + 12, ty, 60, 23, '#24304c', .4);
+    for (let g = 0; g < 4; g++) {
+      const cx = x + 16 + g * 14, cy = ty + 7;
+      R(cx, cy, 12, 9, '#182240');
+      ctx.fillStyle = C.gpu; ctx.globalAlpha = .12 + .8 * act(i, j, g); ctx.fillRect(cx + 1, cy + 1, 10, 7); ctx.globalAlpha = 1;
+    }
+    if (fine) {
+      line([[x + 8, ty + 4], [x + 13, ty + 4]], '#3b78e0', .9); line([[x + 71, ty + 19], [x + 76, ty + 19]], '#d0553a', .9);
+      line([[x + 13, ty + 4], [x + 70, ty + 4]], '#2b4f96', .7, .8); line([[x + 14, ty + 19], [x + 71, ty + 19]], '#99402e', .7, .8);
+      R(x + 14, ty + 1.2, 1.4, 1.4, C.ok);
+    }
+  }
+}
+
+function drawTowers() {
+  [2800, 2950, 3100].forEach((x, k) => {
+    // plume
+    for (let p = 0; p < 20; p++) {
+      const age = (T * .09 + p / 20 + k * .23) % 1, cx = x + 60 + Math.sin(p * 7 + age * 4 + k) * 22 * age + age * age * 110;
+      ctx.globalAlpha = Math.min(age * 5, 1) * (1 - age) * .1; ctx.fillStyle = '#b9c8e8';
+      ctx.beginPath(); ctx.arc(cx, 752 - age * 330, 20 + age * 62, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#172238'; ctx.beginPath(); ctx.moveTo(x, G); ctx.lineTo(x + 8, 792); ctx.lineTo(x + 112, 792); ctx.lineTo(x + 120, G); ctx.fill();
+    ctx.strokeStyle = '#34456b'; ctx.lineWidth = Math.max(1, 1 / S); ctx.stroke();
+    for (let l = 0; l < 5; l++) R(x + 10, 930 + l * 13, 100, 5, '#0c1322');
+    R(x + 24, 764, 72, 28, '#1d2a44'); R(x + 20, 760, 80, 5, '#34456b');
+    const a = T * 5 + k; ctx.strokeStyle = '#9fb6e6'; ctx.lineWidth = Math.max(2.5, 1 / S);
+    for (let b = 0; b < 2; b++) { const c = Math.cos(a + b * Math.PI / 2) * 32; ctx.beginPath(); ctx.moveTo(x + 60 - c, 770); ctx.lineTo(x + 60 + c, 770); ctx.stroke(); }
+    // header stubs
+    R(x + 56, 892, 8, 16, '#8a3626'); R(x + 56, 932, 8, 16, '#234c8f');
+  });
+}
+
+function drawFlows(ps) {
+  const fa = 1 - clamp((S - 8) / 6); if (fa <= 0) return;
+  ctx.globalCompositeOperation = 'lighter';
+  const grid = ps === 'grid';
+  if (grid) { WIRES.forEach((w, k) => flow(w, C.power, 160, 46, 3, fa, k * .33)); flow(P_SUB_SW, C.power, 130, 34, 3.2, fa); }
+  if (ps === 'gen') flow(P_GEN_SW, C.power, 130, 30, 3.2, fa);
+  if (ps === 'batt') flow(P_BATT, C.power, 90, 18, 2.6, fa);
+  flow(P_BUS, C.power, 150, 36, 3.2, fa);
+  flow(P_FIBRE_IN, C.data, 260, 52, 2.6, fa); flow(P_FIBRE_IN, '#9cffd8', -240, 68, 2.4, fa, .4);
+  flow(P_TRAY, C.data, 220, 44, 2.4, fa); flow(P_TRAY, '#9cffd8', -200, 60, 2.2, fa, .5);
+  flow(P_SUPPLY, C.cold, 90, 30, 3.4, fa); flow(P_RETURN, C.warm, 90, 30, 3.4, fa);
+  flow(P_FWARM, C.warm, 80, 30, 3.8, fa); flow(P_FCOOL, C.cold, 80, 30, 3.8, fa);
+  for (let i = 0; i < NR; i++) {
+    const x = rackX(i);
+    flow([[x + 22, 640], [x + 22, RY]], C.power, 70, 26, 2.2, fa, i * .3);
+    if (S > .9) {
+      flow([[x + 62, 680], [x + 62, RY]], C.data, 80, 22, 1.6, fa, i * .4);
+      flow([[x + 5.5, 1026], [x + 5.5, RY + 56]], C.cold, 46, 16, 1.5, fa, i * .2);
+      flow([[x + 78.5, RY + 56], [x + 78.5, 1048]], C.warm, 46, 16, 1.5, fa, i * .2);
+    }
+  }
+  // cold-plate flow across the hero rack's trays
+  if (S > 1.45) for (let j = 0; j < 8; j++) { const ty = trayY(j); flow([[HR + 8, ty + 4], [HR + 70, ty + 4]], C.cold, 14, 9, .7, fa, j * .3); flow([[HR + 14, ty + 19], [HR + 76, ty + 19]], C.warm, 14, 9, .7, fa, j * .3); }
+  // training chatter between racks
+  if (trainMix > .01) {
+    for (let k = 0; k < 18; k++) {
+      const a = k % NR, b = (a + 2 + (k * 3) % 7) % NR, ax = rackX(a) + 42, bx = rackX(b) + 42;
+      const pts = quad([ax, RY - 4], [(ax + bx) / 2, RY - 60 - Math.abs(bx - ax) * .16], [bx, RY - 4], 18);
+      line(pts, C.gpu, 1.2, .22 * trainMix);
+      const u = (T * .7 + hash(k) * 3) % 1, p = ptFrac(pts, u);
+      ctx.fillStyle = '#e6d8ff'; ctx.globalAlpha = trainMix; ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, 1.6 / S), 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ---------- inside the chip ---------- */
+function drawChip(alpha) {
+  const gs = genState(), shown = gs.n + (gs.k >= 0 && gs.ph > .85 ? 1 : 0);
+  ctx.save(); ctx.translate(chip.x, chip.y); ctx.scale(.01, .01); ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#090e1c'; ctx.fillRect(0, 0, 1200, 900);
+  ctx.strokeStyle = C.gpu; ctx.lineWidth = 5; ctx.strokeRect(2.5, 2.5, 1195, 895);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  const MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', SANS = 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+  ctx.fillStyle = '#e4eaf6'; ctx.font = `700 40px ${SANS}`; ctx.fillText('GPU', 40, 68);
+  ctx.fillStyle = '#8d9ab4'; ctx.font = `500 24px ${SANS}`; ctx.fillText('running a large language model', 138, 68);
+  ctx.textAlign = 'right'; ctx.fillText('one of tens of thousands in this building', 1160, 68); ctx.textAlign = 'left';
+  ctx.fillStyle = '#1b2440'; ctx.fillRect(40, 88, 1120, 2);
+  const head = (n, t, x, y) => { ctx.font = `700 20px ${SANS}`; ctx.fillStyle = C.gpu; ctx.fillText(n, x, y); ctx.fillStyle = '#aab6cf'; ctx.fillText(t, x + 24, y); };
+
+  // 1. tokens
+  head('1', 'WORDS → NUMBERS', 40, 128);
+  const toks = PROMPT_TOK.concat(STEPS.slice(0, shown).map(s => s[0].trim() || s[0]));
+  const first = Math.max(0, toks.length - 9);
+  for (let i = first; i < toks.length; i++) {
+    const y = 148 + (i - first) * 54, isNew = i >= PROMPT_TOK.length;
+    ctx.fillStyle = isNew ? '#241c40' : '#141d33'; rr(40, y, 232, 44, 8); ctx.fill();
+    if (i === toks.length - 1 && isNew && gs.k >= 0) { ctx.strokeStyle = C.ok; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.fillStyle = isNew ? '#d9c8ff' : '#e4eaf6'; ctx.font = `600 26px ${MONO}`; ctx.fillText(toks[i], 52, y + 31);
+    ctx.fillStyle = '#62708d'; ctx.font = `500 16px ${MONO}`; ctx.textAlign = 'right'; ctx.fillText(String(1000 + Math.floor(hash(i * 3.7 + 2) * 48000)), 262, y + 29); ctx.textAlign = 'left';
+  }
+
+  // 2. layers
+  head('2', 'MULTIPLY THROUGH THE LAYERS', 300, 128);
+  const NL = 7, wp = gs.k >= 0 ? clamp(gs.ph / .65) * (NL + 2) - 1.2 : -9;
+  for (let L = 0; L < NL; L++) {
+    const lx = 300 + L * 82, wv = Math.exp(-Math.pow(L - wp, 2) * 1.1);
+    ctx.fillStyle = '#10172b'; ctx.fillRect(lx - 4, 146, 64, 486);
+    ctx.fillStyle = C.gpu;
+    for (let r = 0; r < 34; r++) for (let c = 0; c < 4; c++) {
+      const id = L * 1000 + r * 10 + c, f = hash(id + Math.floor(T * 7 + hash(id) * 7));
+      ctx.globalAlpha = alpha * clamp(.07 + .16 * f + wv * (.25 + .75 * hash(id + gs.k * 13 + Math.floor(T * 14))));
+      ctx.fillRect(lx + c * 14, 150 + r * 14, 12, 12);
+    }
+    ctx.globalAlpha = alpha * wv * .16; ctx.fillStyle = '#fff'; ctx.fillRect(lx - 4, 146, 64, 486);
+    ctx.globalAlpha = alpha;
+    if (L < NL - 1) { ctx.fillStyle = wv > .4 ? '#e6d8ff' : '#3b4666'; ctx.font = `700 22px ${SANS}`; ctx.fillText('›', lx + 63, 396); }
+  }
+  ctx.fillStyle = '#8d9ab4'; ctx.font = `500 19px ${SANS}`; ctx.fillText('dozens of layers · billions of multiplications per pass', 300, 664);
+
+  // 3. scores
+  head('3', 'SCORE EVERY NEXT WORD', 886, 128);
+  const grow = gs.k >= 0 ? ease(clamp((gs.ph - .58) / .2)) : 0, picked = gs.k >= 0 && gs.ph > .8;
+  if (gs.k >= 0) {
+    const stp = STEPS[gs.k], pw = .46 + .4 * hash(gs.k * 9.1 + 4); let rest = 1 - pw;
+    const rows = [[stp[0], pw]]; stp[1].forEach((a, q) => { const p = rest * (.45 - q * .05); rest -= p; rows.push([a, p]); });
+    rows.forEach((rw, q) => {
+      const y = 168 + q * 86, win_ = q === 0 && picked;
+      ctx.fillStyle = win_ ? C.ok : '#e4eaf6'; ctx.font = `600 26px ${MONO}`; ctx.fillText('“' + rw[0].trim() + '”', 886, y);
+      ctx.fillStyle = '#141d33'; ctx.fillRect(886, y + 12, 206, 20);
+      ctx.fillStyle = win_ ? C.ok : C.gpu; ctx.fillRect(886, y + 12, 206 * rw[1] * grow, 20);
+      ctx.fillStyle = '#8d9ab4'; ctx.font = `500 20px ${MONO}`; ctx.textAlign = 'right'; ctx.fillText(grow > .05 ? Math.round(rw[1] * grow * 100) + '%' : '', 1160, y + 29); ctx.textAlign = 'left';
+    });
+  } else {
+    ctx.fillStyle = '#62708d'; ctx.font = `500 20px ${SANS}`; ctx.fillText(gs.n ? 'done · next request, please' : 'waiting for input…', 886, 180);
+    for (let q = 0; q < 5; q++) { ctx.fillStyle = '#141d33'; ctx.fillRect(886, 208 + q * 86, 206, 20); }
+  }
+  ctx.fillStyle = '#8d9ab4'; ctx.font = `500 19px ${SANS}`; ctx.fillText('…and ~100,000 others', 886, 664);
+
+  // 4. output
+  ctx.fillStyle = '#1b2440'; ctx.fillRect(40, 690, 1120, 2);
+  head('4', 'PICK ONE, ADD IT TO THE END, GO AGAIN', 40, 730);
+  ctx.font = `500 26px ${MONO}`; ctx.fillStyle = '#7d8aa6'; ctx.fillText(QUESTION, 40, 780);
+  ctx.font = `600 27px ${MONO}`;
+  const done = STEPS.slice(0, Math.max(0, shown - (gs.k >= 0 && gs.ph > .85 ? 1 : 0))).map(s => s[0]).join('');
+  ctx.fillStyle = '#f2f5fb'; ctx.fillText(done, 40, 834);
+  let wx = 40 + ctx.measureText(done).width;
+  if (gs.k >= 0 && gs.ph > .85) { ctx.fillStyle = C.ok; ctx.fillText(STEPS[gs.k][0], wx, 834); wx += ctx.measureText(STEPS[gs.k][0]).width; }
+  if (Math.sin(T * 8) > 0 && shown < STEPS.length) { ctx.fillStyle = C.gpu; ctx.fillRect(wx + 4, 812, 13, 26); }
+  ctx.restore();
+}
+
+/* ---------- screen-space overlays ---------- */
+function ann(wx, wy, text, a, dx = 0, dy = -34, col = '#e4eaf6') {
+  if (a <= .01) return;
+  const p = w2s(wx, wy), tx = p[0] + dx, ty = p[1] + dy;
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p[0], p[1], 2.6, 0, TAU); ctx.fill();
+  ctx.font = '600 12.5px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+  const w = ctx.measureText(text).width + 16, h = 23;
+  let bx = dx > 10 ? tx : dx < -10 ? tx - w : tx - w / 2; const by = dy < 0 ? ty - h : ty;
+  bx = clamp(bx, 6, W - w - 6);
+  ctx.fillStyle = 'rgba(7,11,22,.88)'; rr(bx, by, w, h, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.stroke();
+  ctx.fillStyle = col; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, bx + 8, by + h / 2 + .5);
+  ctx.globalAlpha = 1;
+}
+const ANN = [
+  [0, 1.2, 8, 90, 600, 'Electricity in', 40, -30], [0, 1.6, 8, 1560, 538, 'Data hall: the computers', 0, -30],
+  [0, 2.0, 8, 2700, 1120, 'Fibre: questions in, answers out', 0, 30], [0, 2.4, 8, 3010, 700, 'Heat out', 0, -40],
+  [1, .8, 10, 2900, 1120, 'Fibre-optic cable', 0, 34], [1, 5, 10, 2235, 790, 'Routers', 0, -30],
+  [2, .5, 9, 2235, 790, 'Routers & load balancers', 0, -70], [2, 2.5, 9, 1800, 680, 'Fibre tray', 0, -70],
+  [3, 1.5, 10, 1250, 640, 'Power busbar', 0, -30], [3, 2.2, 10, 1900, 1037, 'Coolant pipes under the floor', 0, 30],
+  [3, 3, 10, HR + 42, RY, 'This rack takes the question', 60, -66, C.data],
+  [4, 2.2, 11, HR + 72, RY + 20, 'Network switches', 46, -14], [4, 2.6, 11, HR + 72, RY + 45, 'Power shelf', 46, 4],
+  [4, 3.0, 11, HR + 12, trayY(1) + 11, 'GPU tray', -46, 0], [4, 3.4, 11, HR + 5.5, RY + 205, 'Cold coolant in', -46, 0, C.cold],
+  [4, 3.8, 11, HR + 78.5, RY + 232, 'Warm coolant out', 46, 0, C.warm], [4, 7.2, 11, chip.x + 6, chip.y + 4.5, 'One GPU', 80, -8, C.gpu],
+  [6, 2.4, 14, 90, 600, 'High-voltage line', 30, -30], [6, 2.8, 14, 324, 880, 'Transformers', 0, -76], [6, 3.2, 14, 560, 926, 'Backup generators', 0, -64],
+  [6, 3.2, 14, 757, 800, 'Switchgear', -20, -112], [6, 3.6, 14, 848, 820, 'UPS', 0, -150], [6, 3.6, 14, 950, 870, 'Batteries', 50, -40],
+  [6, 5, 11.5, 150, 650, 'Drill: grid power lost', 30, 60, C.warm], [6, 5.2, 8.5, 932, 960, 'Batteries carry the load', 60, 30, C.power],
+  [6, 8.5, 11.5, 560, 990, 'Generators take over', 0, 110, C.ok], [6, 11.6, 14, 150, 650, 'Grid restored', 30, 60, C.ok],
+  [7, 1.6, 4.8, HR + 5.5, 1026, 'Cold in · about 30 °C', -50, 30, C.cold], [7, 2, 4.8, HR + 78.5, 1048, 'Warm out · about 45 °C', 50, 30, C.warm],
+  [7, 2.4, 4.8, chip.x + 6, chip.y, 'Cold plate on every chip', 110, -60],
+  [7, 7, 14, 2465, 850, 'Heat exchanger', 0, -40], [7, 7.4, 14, 2617, 916, 'Pumps', 0, -70], [7, 7.8, 14, 3010, 760, 'Cooling towers', 60, -20],
+  [7, 8.4, 14, 2880, 600, 'Heat leaves as warm, damp air', 0, -40], [7, 7.8, 14, 2760, 900, 'Warm water out', 0, -50, C.warm], [7, 8.2, 14, 2740, 940, 'Cooled water back', 0, 70, C.cold],
+  [8, 2, 11, 1300, 640, 'Extra power for a training run', 0, -50, C.power],
+];
+function drawPacket() {
+  let p = null, label = '';
+  if (ci === 1) { p = ptFrac(P_Q1, ease(clamp((lt - 1.4) / 7.2))); label = 'the question'; if (lt < 1.4) p = null; }
+  else if (ci === 2) { p = ptFrac(P_Q2, ease(clamp((lt - .4) / 7))); label = 'the question'; }
+  else if (ci === 3) { p = P_Q2[P_Q2.length - 1]; label = lt < 3 ? 'the question' : ''; }
+  else if (ci === 4) { p = ptFrac(P_Q3, ease(clamp((lt - 3.6) / 3.6))); label = ''; }
+  else if (ci === 9) { const u = clamp((lt - .8) / 7.8); if (u < 1) { p = ptFrac(P_OUT, u * u * (3 - 2 * u)); label = 'the answer'; } }
+  if (!p) return;
+  const s = w2s(p[0], p[1]), pul = 1 + .15 * Math.sin(T * 9);
+  const col = ci === 9 ? '157,255,216' : '120,235,255';
+  const g = ctx.createRadialGradient(s[0], s[1], 0, s[0], s[1], 30 * pul);
+  g.addColorStop(0, `rgba(${col},.75)`); g.addColorStop(.35, `rgba(${col},.22)`); g.addColorStop(1, `rgba(${col},0)`);
+  ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s[0], s[1], 30 * pul, 0, TAU); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s[0], s[1], 4.5, 0, TAU); ctx.fill();
+  if (label) ann(p[0], p[1], label, 1, 0, -26, ci === 9 ? '#9cffd8' : C.data);
+}
+function drawLoss() {
+  const a = win(8, 2.5, CH[8].d, .8); if (a <= .01) return;
+  const p = w2s(1560, 470), w = 240, h = 92, x = clamp(p[0] - w / 2, 8, W - w - 8), y = Math.max(64, p[1] - h / 2);
+  ctx.globalAlpha = a; ctx.fillStyle = 'rgba(7,11,22,.9)'; rr(x, y, w, h, 8); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = '#aab6cf'; ctx.font = '600 11.5px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('Model’s error, falling as it trains', x + 12, y + 20);
+  const pr = clamp((lt - 2.5) / (CH[8].d - 3.2)); ctx.strokeStyle = C.gpu; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i <= 100 * pr; i++) { const u = i / 100, v = Math.exp(-3.4 * u) * .9 + .06 + (hash(i) - .5) * .09 * (1 - u * .6); const px = x + 12 + u * (w - 24), py = y + h - 10 - v * (h - 42); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+/* ---------- frame ---------- */
+function draw() {
+  setCam();
+  trainMix = win(8, 1.2, CH[8].d, 1);
+  const ps = pstate();
+  screenT(); ctx.fillStyle = '#060a14'; ctx.fillRect(0, 0, W, H);
+  worldT(); ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+  const chipPx = chip.w * S;
+  if (chipPx < W * .9) {
+    drawSky(); drawPylon(ps === 'grid'); drawSubstation(); drawGenerators(ps);
+    drawBuilding(ps); drawPipes(ps);
+    for (let i = 0; i < NR; i++) drawRack(i);
+    drawTowers();
+    const hl = win(3, 2.6, 10, .6);
+    if (hl > 0) { ctx.globalAlpha = hl * (.55 + .45 * Math.sin(T * 5)); SR(HR - 4, RY - 4, RW + 8, RH + 8, C.data, 2.5); ctx.globalAlpha = 1; }
+    drawFlows(ps);
+  }
+  if (chipPx > 36) drawChip(clamp((chipPx - 36) / 150));
+  screenT();
+  for (const a of ANN) ann(a[3], a[4], a[5], win(a[0], a[1], a[2]), a[6], a[7], a[8]);
+  drawLoss();
+  drawPacket();
+}
+
+/* ---------- DOM ---------- */
+const segs = $('segs');
+CH.forEach((c, i) => {
+  const b = document.createElement('button'); b.className = 'seg'; b.style.flex = c.d + ' 1 0'; b.title = c.h;
+  b.innerHTML = `<span>${c.n}</span><i><u></u></i>`;
+  b.addEventListener('click', e => { const r = b.getBoundingClientRect(); st = c.t0 + clamp((e.clientX - r.left) / r.width, 0, .98) * c.d; if (e.detail === 0) st = c.t0; lastCi = -1; });
+  segs.appendChild(b); c.el = b; c.fill = b.querySelector('u');
+});
+const pp = $('pp');
+function setPlay(v) { playing = v; pp.textContent = v ? '❚❚' : '▶'; pp.setAttribute('aria-label', v ? 'Pause' : 'Play'); }
+pp.addEventListener('click', () => setPlay(!playing));
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); setPlay(!playing); }
+  else if (e.code === 'ArrowRight') { st = CH[(ci + 1) % CH.length].t0; lastCi = -1; }
+  else if (e.code === 'ArrowLeft') { st = CH[(lt < 1.5 ? ci - 1 + CH.length : ci) % CH.length].t0; lastCi = -1; }
+});
+let lastCi = -1, capTimer = 0, cache = {};
+const setTxt = (id, v) => { if (cache[id] !== v) { cache[id] = v; $(id).textContent = v; } };
+function applyCap() { const c = CH[ci]; $('kick').textContent = c.k; $('head').textContent = c.h; $('body').textContent = c.p; $('cap').classList.remove('sw'); }
+function updateDom() {
+  if (ci !== lastCi) {
+    const firstTime = lastCi === -1 && !$('head').textContent; lastCi = ci;
+    CH.forEach((c, i) => c.el.classList.toggle('on', i === ci));
+    clearTimeout(capTimer);
+    if (firstTime) applyCap(); else { $('cap').classList.add('sw'); capTimer = setTimeout(applyCap, 330); }
+  }
+  CH.forEach((c, i) => { const v = i < ci ? 100 : i > ci ? 0 : lt / c.d * 100; const k = 'f' + i, s = v.toFixed(1); if (cache[k] !== s) { cache[k] = s; c.fill.style.width = s + '%'; } });
+  // chat
+  let q = '', a = '', stt = '';
+  if (ci === 0) { q = ''; }
+  else if (ci === 1 && lt < 1.3) q = QUESTION.slice(0, Math.ceil(lt / 1.3 * QUESTION.length)) + '▍';
+  else q = QUESTION;
+  if (ci >= 1 && !(ci === 1 && lt < 1.3)) {
+    if (ci < 9) { a = '●'.repeat(1 + Math.floor(T * 2.5) % 3); stt = 'waiting…'; }
+    else { const u = clamp((lt - 5.2) / 3.4); a = lt < 5.2 ? '●'.repeat(1 + Math.floor(T * 2.5) % 3) : ANSWER.slice(0, Math.ceil(u * ANSWER.length)); stt = u >= 1 ? 'answered' : 'waiting…'; }
+  }
+  setTxt('q', q || 'Ask anything…'); $('q').classList.toggle('empty', !q);
+  setTxt('a', a); $('a').style.visibility = (ci >= 1 && !(ci === 1 && lt < 1.3)) ? 'visible' : 'hidden';
+  setTxt('st', stt);
+  // gauges
+  const tick = Math.floor(T * 3), ps = pstate();
+  setTxt('gP', (112 + 1.6 * Math.sin(tick * .7) + 7 * trainMix).toFixed(1) + ' MW');
+  setTxt('gS', ps === 'grid' ? 'Grid' : ps === 'batt' ? 'Batteries' : 'Generators');
+  $('gS').style.color = ps === 'grid' ? '' : ps === 'batt' ? C.power : C.ok;
+  setTxt('gC', '30 / ' + (44 + Math.round(Math.sin(tick * .3) + 2 * trainMix)) + ' °C');
+  setTxt('gU', Math.round(lerp(84 + 3 * Math.sin(tick * .5), 99, trainMix)) + ' %');
+}
+
+/* ---------- loop ---------- */
+const m = /t=([\d.]+)/.exec(location.hash); if (m) { st = parseFloat(m[1]) % TOTAL; if (/pause/.test(location.hash)) setPlay(false); }
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now; T += dt;
+  if (playing) st = (st + dt) % TOTAL;
+  ci = 0; for (let i = 0; i < CH.length; i++) if (CH[i].t0 <= st) ci = i;
+  lt = st - CH[ci].t0;
+  draw(); updateDom();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

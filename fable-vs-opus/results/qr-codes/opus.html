@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squares That Remember — how a QR code holds and repairs a message</title>
+<style>
+  :root{
+    --bg:#080a11; --ink:#e9ecf5; --dim:#9aa3b8; --faint:#5d6680;
+    --glass:rgba(13,16,27,.74); --line:rgba(255,255,255,.08);
+    --finder:#ff6b5a; --timing:#2ec4b6; --align:#a07cff; --format:#ffb703; --dark:#ffd166;
+    --data:#3a86ff; --ec:#ff4f9a; --blockA:#33c3ff; --blockB:#ffc233; --dmg:#ff2d55; --fix:#3dffa8;
+    --mode:#ffd166; --len:#c77dff; --term:#8d99ae; --pad:#2ec4b6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
+  canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  button{font:inherit;color:inherit;cursor:pointer}
+
+  /* top bar */
+  #top{position:fixed;left:0;right:0;top:0;display:flex;align-items:center;gap:14px;padding:14px 20px;pointer-events:none;z-index:5}
+  #brand{pointer-events:auto;display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:.02em}
+  #brand .logo{width:22px;height:22px;display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+  #brand .logo i{background:#e9e4d6;border-radius:2px}
+  #brand .logo i:nth-child(2n){background:transparent;outline:1px solid #e9e4d633}
+  #brand small{display:block;font-weight:400;color:var(--dim);font-size:12px;letter-spacing:0}
+  #controls{margin-left:auto;display:flex;gap:10px;align-items:center;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end}
+  .field{display:flex;align-items:center;gap:8px;background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:5px 6px 5px 12px;backdrop-filter:blur(12px)}
+  .field label{font-size:12px;color:var(--dim)}
+  #msg{background:transparent;border:0;outline:0;color:var(--ink);width:230px;font:14px ui-monospace,Menlo,Consolas,monospace}
+  #cap{font-size:11px;color:var(--faint);min-width:44px;text-align:right}
+  #cap.over{color:var(--dmg)}
+  .seg{display:flex;background:rgba(255,255,255,.05);border-radius:9px;padding:2px}
+  .seg button{background:transparent;border:0;padding:4px 9px;border-radius:7px;font-size:13px;color:var(--dim)}
+  .seg button.on{background:#e9e4d6;color:#111}
+  .iconbtn{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:13px;backdrop-filter:blur(12px)}
+  .iconbtn:hover{border-color:rgba(255,255,255,.25)}
+  .iconbtn.on{border-color:#e9e4d6aa}
+
+  /* card */
+  #card{position:fixed;left:22px;top:82px;width:410px;max-height:calc(100vh - 170px);overflow:auto;z-index:4;
+    background:var(--glass);border:1px solid var(--line);border-radius:20px;padding:22px 24px 20px;backdrop-filter:blur(16px);
+    box-shadow:0 20px 60px rgba(0,0,0,.45);scrollbar-width:thin;transition:opacity .35s, transform .35s}
+  #card.swap{opacity:0;transform:translateY(8px)}
+  #card .kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  #card h1{margin:.25em 0 .45em;font-size:27px;line-height:1.15;font-weight:700;letter-spacing:-.01em}
+  #card p{margin:.55em 0;color:#cfd5e4}
+  #card b{color:#fff}
+  #card .note{font-size:13px;color:var(--dim)}
+  .k{display:inline-block;padding:0 6px;border-radius:5px;font-size:12.5px;line-height:19px;color:#0b0d14;font-weight:600}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+  .stat{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;color:var(--dim)}
+  .stat b{display:block;font-size:16px;color:#fff}
+  .widget{margin-top:14px;padding:12px;border-radius:14px;background:rgba(0,0,0,.25);border:1px solid var(--line)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--dim);margin-bottom:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  /* bit chips */
+  #chips{display:flex;flex-wrap:wrap;gap:4px}
+  .cw{display:flex;gap:1px;padding:2px;border-radius:4px;background:rgba(255,255,255,.04);opacity:.22;transition:opacity .2s, transform .2s}
+  .cw.lit{opacity:1}
+  .cw.now{transform:scale(1.25);box-shadow:0 0 0 1px #fff8}
+  .cw s{display:block;width:5px;height:11px;border-radius:1px;text-decoration:none}
+  .cw s.z{opacity:.28}
+  #ring{font-size:13px;min-height:22px;margin-bottom:8px;color:#fff}
+  /* parts list */
+  .parts{list-style:none;margin:10px 0 0;padding:0}
+  .parts li{display:flex;gap:10px;padding:7px 8px;border-radius:10px;opacity:.45;transition:all .3s;font-size:13.5px}
+  .parts li.on{opacity:1;background:rgba(255,255,255,.05)}
+  .parts li.done{opacity:.85}
+  .parts li i{flex:none;width:12px;height:12px;border-radius:3px;margin-top:4px}
+  .parts li b{display:block}
+  .parts li span{color:var(--dim)}
+  /* mask bars */
+  .mrow{display:grid;grid-template-columns:26px 54px 1fr 40px;align-items:center;gap:8px;padding:3px 4px;border-radius:8px;cursor:pointer;font-size:12.5px}
+  .mrow:hover{background:rgba(255,255,255,.05)}
+  .mrow.on{background:rgba(160,124,255,.18)}
+  .mrow.win .bar i{background:var(--fix)}
+  .mrow canvas{width:26px;height:26px;border-radius:4px;image-rendering:pixelated}
+  .bar{height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--align);border-radius:4px;transition:width .5s}
+  /* blocks strip */
+  .brow{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .brow .lab{width:54px;font-size:12px;color:var(--dim)}
+  .bcells{display:flex;flex-wrap:wrap;gap:2px;flex:1}
+  .bcells i{width:7px;height:12px;border-radius:2px;opacity:.15;transition:opacity .15s}
+  .bcells i.lit{opacity:1}
+  .eq{font-size:13px;background:rgba(255,255,255,.04);border-radius:10px;padding:10px 12px;margin:10px 0;color:#dfe5f3}
+  /* meters */
+  .meter{margin:8px 0}
+  .meter .top{display:flex;justify-content:space-between;font-size:12.5px;color:var(--dim)}
+  .meter .top b{color:#fff}
+  .meter .track{position:relative;height:10px;background:rgba(255,255,255,.06);border-radius:5px;margin-top:4px;overflow:hidden}
+  .meter .track i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--fix);border-radius:5px;transition:width .35s, background .35s}
+  .meter.over .track i{background:var(--dmg)}
+  .meter.over .top b{color:var(--dmg)}
+  /* steps */
+  .steps{list-style:none;padding:0;margin:8px 0 0}
+  .steps li{padding:6px 0 6px 26px;position:relative;font-size:13.5px;color:#cfd5e4;animation:in .35s ease}
+  .steps li::before{content:"";position:absolute;left:4px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--faint)}
+  .steps li.ok::before{background:var(--fix);box-shadow:0 0 10px var(--fix)}
+  .steps li.bad::before{background:var(--dmg);box-shadow:0 0 10px var(--dmg)}
+  .steps li.run::before{background:var(--format);animation:blink .6s infinite alternate}
+  @keyframes blink{to{opacity:.3}}
+  @keyframes in{from{opacity:0;transform:translateY(4px)}}
+  .synd{display:flex;flex-wrap:wrap;gap:2px;margin-top:5px}
+  .synd i{font-style:normal;font-size:9.5px;padding:1px 3px;border-radius:3px;background:rgba(255,255,255,.06);color:var(--dim)}
+  .synd i.nz{background:rgba(255,45,85,.25);color:#ffc2cf}
+  .result{margin-top:12px;padding:12px 14px;border-radius:12px;font-size:15px;animation:in .4s ease}
+  .result.ok{background:rgba(61,255,168,.1);border:1px solid rgba(61,255,168,.35)}
+  .result.bad{background:rgba(255,45,85,.1);border:1px solid rgba(255,45,85,.35)}
+  .result .m{font-size:17px;color:#fff;word-break:break-word;margin-top:4px}
+  /* tools */
+  .tools{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .tbtn{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-size:13px}
+  .tbtn:hover{border-color:rgba(255,255,255,.3)}
+  .tbtn.on{background:#e9e4d6;color:#111}
+  .tbtn.primary{background:var(--fix);color:#05170e;border-color:transparent;font-weight:650}
+  .row{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--dim)}
+  input[type=range]{accent-color:#e9e4d6}
+
+  /* nav */
+  #nav{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;z-index:5;
+    background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:7px 10px;backdrop-filter:blur(14px)}
+  #nav .nb{background:transparent;border:0;padding:6px 10px;border-radius:10px;font-size:14px}
+  #nav .nb:hover{background:rgba(255,255,255,.07)}
+  #dots{display:flex;gap:6px}
+  #dots button{width:26px;height:6px;border-radius:3px;border:0;background:rgba(255,255,255,.14);padding:0;position:relative;overflow:hidden}
+  #dots button.on{background:rgba(255,255,255,.3)}
+  #dots button.on i{position:absolute;left:0;top:0;bottom:0;background:#e9e4d6;width:0}
+  #dots button.seen{background:rgba(233,228,214,.5)}
+  #dots button:hover::after{content:attr(data-t);position:absolute;bottom:14px;left:50%;transform:translateX(-50%);white-space:nowrap;
+    background:#000c;padding:4px 8px;border-radius:6px;font-size:12px}
+  #dots button{overflow:visible}
+  #dots button.on i{border-radius:3px}
+
+  /* labels & tooltip */
+  .lbl{position:fixed;left:0;top:0;z-index:3;pointer-events:none;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;
+    color:#0b0d14;white-space:nowrap;transform:translate(-50%,-50%);transition:opacity .4s;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  #tip{position:fixed;z-index:6;pointer-events:none;background:#05070dee;border:1px solid var(--line);border-radius:10px;padding:8px 10px;
+    font-size:12px;line-height:1.45;color:#dfe5f3;max-width:240px;opacity:0;transition:opacity .15s}
+  #tip b{color:#fff}
+  #toast{position:fixed;right:20px;bottom:22px;z-index:6;background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:9px 13px;
+    font-size:13px;color:var(--dim);backdrop-filter:blur(12px);transition:opacity .6s}
+  #err{position:fixed;inset:0;display:none;place-items:center;text-align:center;padding:40px;color:var(--dim);z-index:9}
+
+  @media (max-width: 900px){
+    #card{left:10px;right:10px;width:auto;top:auto;bottom:70px;max-height:44vh;padding:16px 18px}
+    #card h1{font-size:21px}
+    #top{padding:10px;flex-wrap:wrap}
+    #brand small{display:none}
+    #msg{width:140px}
+    #nav{bottom:10px}
+    #dots button{width:14px}
+    #toast{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="top">
+  <div id="brand">
+    <div class="logo"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div>Squares That Remember<small>How a QR code holds — and repairs — a message</small></div>
+  </div>
+  <div id="controls">
+    <div class="field">
+      <label for="msg">Message</label>
+      <input id="msg" class="mono" spellcheck="false" autocomplete="off">
+      <span id="cap" class="mono"></span>
+    </div>
+    <div class="field" title="Error-correction level: how much of the code is spent on repair data">
+      <label>Repair level</label>
+      <div class="seg" id="ecl">
+        <button data-l="L">L</button><button data-l="M">M</button><button data-l="Q">Q</button><button data-l="H">H</button>
+      </div>
+    </div>
+    <button class="iconbtn" id="flat" title="Face the code head-on so a phone camera can scan it">⌖ Face camera</button>
+    <button class="iconbtn" id="snd" title="Toggle sound">♪ Sound: on</button>
+  </div>
+</div>
+
+<div id="card"></div>
+
+<div id="nav">
+  <button class="nb" id="prev" title="Previous (←)">‹</button>
+  <div id="dots"></div>
+  <button class="nb" id="next" title="Next (→)">›</button>
+  <button class="nb" id="play" title="Play / pause the tour (space)">❚❚</button>
+</div>
+
+<div id="tip"></div>
+<div id="toast">♪ Tap anywhere to turn on sound</div>
+<div id="err"><div><h2>Couldn't start WebGL / load Three.js</h2><p>This explainer loads Three.js from a CDN and needs WebGL. Check your connection and try a current browser.</p></div></div>
+
+<!-- ===================================================================
+     QR CORE — a real (scannable) Version 3 QR encoder and a decoder with
+     full Reed–Solomon error correction over GF(256). No dependencies.
+     =================================================================== -->
+<script>
+// ===== QRCORE START =====
+const QRCore = (() => {
+  const N = 29;                       // Version 3 → 17 + 4·3 = 29 modules per side
+  const TOTAL = 70;                   // total codewords in Version 3
+  // codewords per block for each error-correction level (Version 3)
+  const ECL = {
+    L: { fb: 1, blocks: 1, k: 55, ec: 15 },
+    M: { fb: 0, blocks: 1, k: 44, ec: 26 },
+    Q: { fb: 3, blocks: 2, k: 17, ec: 18 },
+    H: { fb: 2, blocks: 2, k: 13, ec: 22 },
+  };
+  const FB2ECL = { 1: 'L', 0: 'M', 3: 'Q', 2: 'H' };
+
+  // ---------- Galois field GF(2^8), primitive polynomial x^8+x^4+x^3+x^2+1 (0x11D)
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  { let x = 1; for (let i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255]; }
+  const mul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+  const div = (a, b) => { if (b === 0) throw new Error('div0'); return a === 0 ? 0 : EXP[(LOG[a] + 255 - LOG[b]) % 255]; };
+  const gpow = (a, p) => EXP[(((LOG[a] * p) % 255) + 255) % 255];
+  const inv = (a) => EXP[255 - LOG[a]];
+  const pScale = (p, x) => p.map(c => mul(c, x));
+  const pAdd = (p, q) => { const r = new Array(Math.max(p.length, q.length)).fill(0);
+    for (let i = 0; i < p.length; i++) r[i + r.length - p.length] = p[i];
+    for (let i = 0; i < q.length; i++) r[i + r.length - q.length] ^= q[i]; return r; };
+  const pMul = (p, q) => { const r = new Array(p.length + q.length - 1).fill(0);
+    for (let j = 0; j < q.length; j++) for (let i = 0; i < p.length; i++) r[i + j] ^= mul(p[i], q[j]); return r; };
+  const pEval = (p, x) => { let y = p[0]; for (let i = 1; i < p.length; i++) y = mul(y, x) ^ p[i]; return y; };
+  const pDiv = (dividend, divisor) => { const out = dividend.slice();
+    for (let i = 0; i < dividend.length - (divisor.length - 1); i++) { const c = out[i];
+      if (c !== 0) for (let j = 1; j < divisor.length; j++) if (divisor[j] !== 0) out[i + j] ^= mul(divisor[j], c); }
+    const sep = out.length - (divisor.length - 1); return [out.slice(0, sep), out.slice(sep)]; };
+  const genCache = {};
+  const genPoly = (n) => { if (genCache[n]) return genCache[n]; let g = [1]; for (let i = 0; i < n; i++) g = pMul(g, [1, gpow(2, i)]); return (genCache[n] = g); };
+
+  function rsEncode(data, nsym) {
+    const g = genPoly(nsym); const out = data.concat(new Array(nsym).fill(0));
+    for (let i = 0; i < data.length; i++) { const c = out[i]; if (c !== 0) for (let j = 1; j < g.length; j++) out[i + j] ^= mul(g[j], c); }
+    return out.slice(data.length);
+  }
+  function syndromes(msg, nsym) { const s = [0]; for (let i = 0; i < nsym; i++) s.push(pEval(msg, gpow(2, i))); return s; }
+  // Berlekamp–Massey
+  function findErrLoc(synd, nsym) {
+    let errLoc = [1], oldLoc = [1]; const shift = synd.length - nsym;
+    for (let i = 0; i < nsym; i++) {
+      const K = i + shift; let delta = synd[K];
+      for (let j = 1; j < errLoc.length; j++) delta ^= mul(errLoc[errLoc.length - 1 - j], synd[K - j]);
+      oldLoc = oldLoc.concat([0]);
+      if (delta !== 0) {
+        if (oldLoc.length > errLoc.length) { const nl = pScale(oldLoc, delta); oldLoc = pScale(errLoc, inv(delta)); errLoc = nl; }
+        errLoc = pAdd(errLoc, pScale(oldLoc, delta));
+      }
+    }
+    while (errLoc.length && errLoc[0] === 0) errLoc.shift();
+    if ((errLoc.length - 1) * 2 > nsym) throw new Error('too many errors');
+    return errLoc;
+  }
+  // Chien search
+  function findErrors(errLocRev, nmess) {
+    const errs = errLocRev.length - 1, pos = [];
+    for (let i = 0; i < nmess; i++) if (pEval(errLocRev, gpow(2, i)) === 0) pos.push(nmess - 1 - i);
+    if (pos.length !== errs) throw new Error('locator roots outside the block');
+    return pos;
+  }
+  // Forney
+  function correctErrata(msg, synd, errPos) {
+    const coefPos = errPos.map(p => msg.length - 1 - p);
+    let eLoc = [1]; for (const i of coefPos) eLoc = pMul(eLoc, pAdd([1], [gpow(2, i), 0]));
+    const sr = synd.slice().reverse();
+    const errEval = pDiv(pMul(sr, eLoc), [1].concat(new Array(eLoc.length).fill(0)))[1];
+    const X = coefPos.map(c => gpow(2, c - 255));
+    const E = new Array(msg.length).fill(0), mags = [];
+    for (let i = 0; i < X.length; i++) {
+      const Xi = X[i], XiInv = inv(Xi); let prime = 1;
+      for (let j = 0; j < X.length; j++) if (j !== i) prime = mul(prime, 1 ^ mul(XiInv, X[j]));
+      if (prime === 0) throw new Error('forney failed');
+      const y = mul(Xi, pEval(errEval, XiInv));
+      E[errPos[i]] = div(y, prime); mags.push(E[errPos[i]]);
+    }
+    return { msg: pAdd(msg, E), mags };
+  }
+  function rsDecode(block, nsym) {
+    const synd = syndromes(block, nsym);
+    const res = { ok: false, synd: synd.slice(1), positions: [], mags: [], msg: block.slice(), degree: 0 };
+    if (Math.max(...synd) === 0) { res.ok = true; return res; }
+    try {
+      const errLoc = findErrLoc(synd, nsym); res.degree = errLoc.length - 1;
+      const pos = findErrors(errLoc.slice().reverse(), block.length);
+      const c = correctErrata(block, synd, pos);
+      if (Math.max(...syndromes(c.msg, nsym)) !== 0) throw new Error('still inconsistent');
+      res.ok = true; res.positions = pos; res.mags = c.mags; res.msg = c.msg;
+    } catch (e) { res.reason = e.message; }
+    return res;
+  }
+
+  // ---------- geometry template (independent of content)
+  const NN = N * N, idx = (x, y) => y * N + x;
+  const role = new Array(NN).fill(null), tmpl = new Uint8Array(NN);
+  const setF = (x, y, v, r) => { role[idx(x, y)] = r; tmpl[idx(x, y)] = v ? 1 : 0; };
+  for (let i = 0; i < N; i++) { setF(6, i, i % 2 === 0, 'timing'); setF(i, 6, i % 2 === 0, 'timing'); }
+  const finders = [];
+  for (const [cx, cy] of [[3, 3], [N - 4, 3], [3, N - 4]]) {
+    const cells = [];
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= N || y >= N) continue;
+      const d = Math.max(Math.abs(dx), Math.abs(dy));
+      setF(x, y, d !== 2 && d !== 4, d === 4 ? 'sep' : 'finder');
+      if (d <= 3) cells.push(idx(x, y));
+    }
+    finders.push(cells);
+  }
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+    setF(22 + dx, 22 + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1, 'align');
+  const formatPos = [[], []];
+  for (let i = 0; i <= 5; i++) formatPos[0].push(idx(8, i));
+  formatPos[0].push(idx(8, 7), idx(8, 8), idx(7, 8));
+  for (let i = 9; i < 15; i++) formatPos[0].push(idx(14 - i, 8));
+  for (let i = 0; i < 8; i++) formatPos[1].push(idx(N - 1 - i, 8));
+  for (let i = 8; i < 15; i++) formatPos[1].push(idx(8, N - 15 + i));
+  for (const c of formatPos) for (const m of c) { role[m] = 'format'; tmpl[m] = 0; }
+  setF(8, N - 8, 1, 'dark');
+  // zigzag order of all non-function modules
+  const dataOrder = [];
+  for (let right = N - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < N; vert++) for (let j = 0; j < 2; j++) {
+      const x = right - j, upward = ((right + 1) & 2) === 0, y = upward ? N - 1 - vert : vert;
+      if (role[idx(x, y)] === null) dataOrder.push(idx(x, y));
+    }
+  }
+  const cwModules = []; for (let c = 0; c < TOTAL; c++) cwModules.push(dataOrder.slice(c * 8, c * 8 + 8));
+
+  const maskFn = (m, x, y) => {
+    switch (m) {
+      case 0: return (x + y) % 2 === 0;           case 1: return y % 2 === 0;
+      case 2: return x % 3 === 0;                 case 3: return (x + y) % 3 === 0;
+      case 4: return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+      case 5: return (x * y) % 2 + (x * y) % 3 === 0;
+      case 6: return ((x * y) % 2 + (x * y) % 3) % 2 === 0;
+      case 7: return ((x + y) % 2 + (x * y) % 3) % 2 === 0;
+    }
+  };
+  const formatBits = (fb, mask) => { const d = (fb << 3) | mask; let r = d;
+    for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); return ((d << 10) | r) ^ 0x5412; };
+  const FORMATS = []; for (let d = 0; d < 32; d++) FORMATS.push(formatBits(d >> 3, d & 7));
+  function drawFormat(g, fb, mask) { const b = formatBits(fb, mask);
+    for (const c of formatPos) c.forEach((m, i) => { g[m] = (b >>> i) & 1; }); }
+
+  function penalty(g) {
+    let n1 = 0, n2 = 0, n3 = 0, dark = 0;
+    const at = (x, y) => g[y * N + x];
+    const p1 = [1,0,1,1,1,0,1,0,0,0,0], p2 = [0,0,0,0,1,0,1,1,1,0,1];
+    for (let pass = 0; pass < 2; pass++) for (let a = 0; a < N; a++) {
+      let run = 1;
+      for (let b = 1; b <= N; b++) {
+        const same = b < N && (pass ? at(a, b) === at(a, b - 1) : at(b, a) === at(b - 1, a));
+        if (same) run++; else { if (run >= 5) n1 += 3 + run - 5; run = 1; }
+      }
+      for (let b = 0; b + 11 <= N; b++) {
+        let m1 = true, m2 = true;
+        for (let k = 0; k < 11; k++) { const v = pass ? at(a, b + k) : at(b + k, a); if (v !== p1[k]) m1 = false; if (v !== p2[k]) m2 = false; }
+        if (m1) n3 += 40; if (m2) n3 += 40;
+      }
+    }
+    for (let y = 0; y < N - 1; y++) for (let x = 0; x < N - 1; x++) { const v = at(x, y);
+      if (v === at(x + 1, y) && v === at(x, y + 1) && v === at(x + 1, y + 1)) n2 += 3; }
+    for (let i = 0; i < NN; i++) dark += g[i];
+    const n4 = 10 * Math.floor(Math.abs(dark * 100 / NN - 50) / 5);
+    return { n1, n2, n3, n4, total: n1 + n2 + n3 + n4 };
+  }
+
+  function utf8(s) { return Array.from(new TextEncoder().encode(s)); }
+  function maxBytes(ecl) { const E = ECL[ecl]; return E.blocks * E.k - 2; }
+
+  function build(input, eclKey, forcedMask) {
+    const E = ECL[eclKey], B = E.blocks, k = E.k, ec = E.ec, cap = B * k;
+    let bytes = typeof input === 'string' ? utf8(input) : Array.from(input);
+    if (bytes.length > cap - 2) bytes = bytes.slice(0, cap - 2);
+    const bits = [], seg = [], chr = [];
+    const push = (v, n, s, c = -1) => { for (let i = n - 1; i >= 0; i--) { bits.push((v >>> i) & 1); seg.push(s); chr.push(c); } };
+    push(4, 4, 'mode'); push(bytes.length, 8, 'len'); bytes.forEach((b, j) => push(b, 8, 'data', j));
+    push(0, Math.min(4, cap * 8 - bits.length), 'term');
+    while (bits.length % 8) push(0, 1, 'term');
+    for (let p = 0; bits.length < cap * 8; p++) push(p % 2 ? 0x11 : 0xEC, 8, 'pad');
+    const dataCw = []; for (let i = 0; i < cap; i++) { let v = 0; for (let j = 0; j < 8; j++) v = (v << 1) | bits[i * 8 + j]; dataCw.push(v); }
+    const blocks = []; for (let b = 0; b < B; b++) { const d = dataCw.slice(b * k, (b + 1) * k); blocks.push({ d, e: rsEncode(d, ec) }); }
+    const final = [], meta = [];
+    for (let i = 0; i < k; i++) for (let b = 0; b < B; b++) { final.push(blocks[b].d[i]); meta.push({ block: b, pos: i, ec: false }); }
+    for (let i = 0; i < ec; i++) for (let b = 0; b < B; b++) { final.push(blocks[b].e[i]); meta.push({ block: b, pos: k + i, ec: true }); }
+    const raw = new Uint8Array(tmpl), cwOf = new Int16Array(NN).fill(-1), bitOf = new Int8Array(NN).fill(-1), roles = role.slice();
+    dataOrder.forEach((m, i) => {
+      if (i < TOTAL * 8) { const c = i >> 3, bi = i & 7; raw[m] = (final[c] >> (7 - bi)) & 1; cwOf[m] = c; bitOf[m] = bi; roles[m] = meta[c].ec ? 'ec' : 'data'; }
+      else { raw[m] = 0; roles[m] = 'rem'; }
+    });
+    const variants = [], pen = [];
+    for (let m = 0; m < 8; m++) {
+      const g = new Uint8Array(raw);
+      for (const mi of dataOrder) if (maskFn(m, mi % N, (mi / N) | 0)) g[mi] ^= 1;
+      drawFormat(g, E.fb, m); variants.push(g); pen.push(penalty(g));
+    }
+    let mask = forcedMask;
+    if (mask == null) { mask = 0; for (let m = 1; m < 8; m++) if (pen[m].total < pen[mask].total) mask = m; }
+    const streamToFinal = (j) => (j % k) * B + Math.floor(j / k);
+    return { N, ecl: eclKey, E, bytes, bits, seg, chr, dataCw, blocks, final, meta, raw, cwOf, bitOf, roles,
+      variants, pen, mask, modules: variants[mask], streamToFinal, t: Math.floor(ec / 2) };
+  }
+
+  function readCodewords(g, mask) {
+    const cws = new Array(TOTAL).fill(0);
+    for (let i = 0; i < TOTAL * 8; i++) { const m = dataOrder[i]; let v = g[m];
+      if (maskFn(mask, m % N, (m / N) | 0)) v ^= 1; cws[i >> 3] |= v << (7 - (i & 7)); }
+    return cws;
+  }
+  const popc = (v) => { let c = 0; while (v) { c += v & 1; v >>>= 1; } return c; };
+
+  function decode(g) {
+    const out = { ok: false };
+    out.finderErr = finders.map(cells => cells.filter(c => g[c] !== tmpl[c]).length);
+    if (out.finderErr.some(n => n > 10)) { out.stage = 'locate'; out.reason = 'A finder pattern is too damaged — a camera could not locate the code\'s corners.'; return out; }
+    let best = { d: 99 };
+    formatPos.forEach((cells, ci) => { let v = 0; cells.forEach((m, bi) => { if (g[m]) v |= 1 << bi; });
+      for (let d = 0; d < 32; d++) { const dist = popc(v ^ FORMATS[d]); if (dist < best.d) best = { d: dist, data: d, copy: ci }; } });
+    out.format = best;
+    if (best.d > 3) { out.stage = 'format'; out.reason = 'Both copies of the format information are unreadable.'; return out; }
+    const ecl = FB2ECL[best.data >> 3], mask = best.data & 7, E = ECL[ecl];
+    out.ecl = ecl; out.mask = mask;
+    const cws = readCodewords(g, mask); out.read = cws;
+    const blocks = []; for (let b = 0; b < E.blocks; b++) blocks.push({ cw: [], finalIdx: [] });
+    let p = 0;
+    for (let i = 0; i < E.k; i++) for (let b = 0; b < E.blocks; b++) { blocks[b].cw.push(cws[p]); blocks[b].finalIdx.push(p++); }
+    for (let i = 0; i < E.ec; i++) for (let b = 0; b < E.blocks; b++) { blocks[b].cw.push(cws[p]); blocks[b].finalIdx.push(p++); }
+    let allOk = true; const data = [];
+    for (const bl of blocks) { bl.res = rsDecode(bl.cw, E.ec); if (!bl.res.ok) allOk = false; else data.push(...bl.res.msg.slice(0, E.k)); }
+    out.blocks = blocks;
+    if (!allOk) { out.stage = 'rs'; out.reason = 'More damaged codewords than the repair budget can solve for.'; return out; }
+    let bp = 0; const rd = (n) => { let v = 0; for (let i = 0; i < n; i++, bp++) v = (v << 1) | ((data[bp >> 3] >> (7 - (bp & 7))) & 1); return v; };
+    const modeInd = rd(4);
+    if (modeInd !== 4) { out.stage = 'parse'; out.reason = 'Decoded data does not start with the byte-mode header.'; return out; }
+    const len = rd(8);
+    if (len > E.blocks * E.k - 2) { out.stage = 'parse'; out.reason = 'Decoded length is impossible.'; return out; }
+    const bytes = []; for (let i = 0; i < len; i++) bytes.push(rd(8));
+    out.bytes = bytes; out.message = new TextDecoder().decode(new Uint8Array(bytes)); out.ok = true;
+    return out;
+  }
+
+  return { N, NN, TOTAL, ECL, build, decode, readCodewords, maskFn, penalty, formatBits, rsEncode, rsDecode, genPoly,
+    role, tmpl, finders, formatPos, dataOrder, cwModules, utf8, maxBytes, gpow };
+})();
+if (typeof module !== 'undefined') module.exports = QRCore;
+// ===== QRCORE END =====
+</script>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+window.__booted = true;
+const Q = QRCore, N = Q.N, NN = Q.NN, HALF = (N - 1) / 2;
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const hex2 = (v) => v.toString(16).padStart(2, '0').toUpperCase();
+const bin8 = (v) => v.toString(2).padStart(8, '0');
+const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const params = new URLSearchParams(location.search);
+
+/* =====================================================================
+   SOUND — everything synthesized live with the Web Audio API
+   ===================================================================== */
+const Snd = (() => {
+  let ctx = null, master, wet, padNodes = null, muted = false, lastTick = 0, lastScrape = 0;
+  const PENTA = [0, 3, 5, 7, 10];
+  const note = (n) => 220 * Math.pow(2, n / 12);
+  const scale = (i) => note(PENTA[((i % 5) + 5) % 5] + 12 * Math.floor(i / 5));
+  function init() {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ctx = new AC();
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = .004;
+    master = ctx.createGain(); master.gain.value = muted ? 0 : .85; master.connect(comp); comp.connect(ctx.destination);
+    const conv = ctx.createConvolver(); const len = ctx.sampleRate * 3.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+    conv.buffer = ir; wet = ctx.createGain(); wet.gain.value = .9; wet.connect(conv); conv.connect(master);
+    startPad();
+  }
+  function route(node, w = .3, pan = 0) {
+    let n = node;
+    if (pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); node.connect(p); n = p; }
+    n.connect(master); if (w > 0) { const g = ctx.createGain(); g.gain.value = w; n.connect(g); g.connect(wet); }
+  }
+  function tone(f, o = {}) {
+    if (!ctx) return; const { type = 'sine', dur = .25, vol = .12, att = .004, when = 0, w = .3, glide = 0, pan = 0, detune = 0 } = o;
+    const t = ctx.currentTime + when, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(f, t); osc.detune.value = detune;
+    if (glide) osc.frequency.exponentialRampToValueAtTime(glide, t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    osc.connect(g); route(g, w, pan); osc.start(t); osc.stop(t + dur + .05);
+  }
+  let noiseBuf = null;
+  function noise(dur, o = {}) {
+    if (!ctx) return; const { vol = .2, f = 1200, to = 0, q = 1, type = 'lowpass', when = 0, w = .2, att = .005, pan = 0 } = o;
+    if (!noiseBuf) { noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const t = ctx.currentTime + when, src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noiseBuf; src.loop = true; fl.type = type; fl.Q.value = q; fl.frequency.setValueAtTime(f, t);
+    if (to) fl.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    src.connect(fl); fl.connect(g); route(g, w, pan); src.start(t, Math.random()); src.stop(t + dur + .05);
+  }
+  function bell(f, vol = .1, when = 0, pan = 0) {
+    tone(f, { dur: 2.2, vol, when, w: .5, pan }); tone(f * 2.756, { dur: .9, vol: vol * .28, when, w: .5, pan });
+    tone(f * 5.404, { dur: .35, vol: vol * .12, when, w: .5, pan }); tone(f * .5, { dur: 1.4, vol: vol * .25, when, w: .4, pan });
+  }
+  // ambient pad: four detuned saws through a breathing low-pass filter
+  const CHORDS = [[-12, -5, 3, 7], [-16, -9, 0, 7], [-14, -7, 2, 5], [-12, -5, 0, 7], [-19, -12, -2, 5], [-17, -10, 0, 3]];
+  function startPad() {
+    const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = 520; fl.Q.value = .7;
+    const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = .07; lg.gain.value = 260; lfo.connect(lg); lg.connect(fl.frequency); lfo.start();
+    const g = ctx.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(.05, ctx.currentTime + 4);
+    fl.connect(g); route(g, .7);
+    const oscs = CHORDS[0].map((n, i) => { const o = ctx.createOscillator(); o.type = i % 2 ? 'sawtooth' : 'triangle';
+      o.frequency.value = note(n); o.detune.value = (i - 1.5) * 7; o.connect(fl); o.start(); return o; });
+    padNodes = { oscs, g };
+  }
+  function chord(i) { if (!ctx || !padNodes) return; const c = CHORDS[i % CHORDS.length];
+    padNodes.oscs.forEach((o, k) => o.frequency.setTargetAtTime(note(c[k]), ctx.currentTime, .8)); }
+  return {
+    init, chord, tone, noise, bell, scale,
+    get on() { return !!ctx && !muted; }, get ready() { return !!ctx; },
+    toggle() { muted = !muted; if (master) master.gain.setTargetAtTime(muted ? 0 : .85, ctx.currentTime, .05); return !muted; },
+    tick(bit, pan = 0, vol = .045) { if (!ctx) return; const n = performance.now(); if (n - lastTick < 24) return; lastTick = n;
+      tone(bit ? 1760 : 1174.66, { type: 'triangle', dur: .045, vol, w: .08, pan }); },
+    blip(i, vol = .07, pan = 0) { tone(scale(i), { type: 'sine', dur: .35, vol, w: .35, pan }); tone(scale(i) * 2, { type: 'triangle', dur: .08, vol: vol * .3, w: .1, pan }); },
+    click() { tone(2400, { type: 'sine', dur: .03, vol: .04, w: 0 }); },
+    whoosh(dur = 1.4, vol = .12) { noise(dur, { vol, f: 250, to: 3200, q: 1.2, type: 'bandpass', att: dur * .6, w: .5 }); },
+    swish(vol = .06) { noise(.35, { vol, f: 4000, to: 700, q: .8, type: 'bandpass', att: .02, w: .3 }); },
+    splat(pan = 0) { noise(.5, { vol: .4, f: 1600, to: 160, q: .6, att: .002, w: .35, pan });
+      tone(110, { type: 'sine', dur: .45, vol: .35, glide: 38, w: .1 }); noise(.08, { vol: .25, f: 5000, type: 'highpass', att: .001, w: .2, pan }); },
+    scrape(pan = 0) { const n = performance.now(); if (n - lastScrape < 45) return; lastScrape = n;
+      noise(.12, { vol: .07, f: 2600 + Math.random() * 1800, q: 4, type: 'bandpass', att: .004, w: .15, pan }); },
+    ink(pan = 0) { const n = performance.now(); if (n - lastScrape < 60) return; lastScrape = n;
+      noise(.18, { vol: .08, f: 700, to: 250, q: 2, type: 'bandpass', att: .01, w: .2, pan }); tone(180 + Math.random() * 40, { dur: .12, vol: .04, glide: 90, w: .1 }); },
+    success() { [0, 4, 7, 12, 16].forEach((n, i) => bell(note(n + 12), .08, i * .11)); },
+    fail() { tone(note(-14), { type: 'sawtooth', dur: 1.3, vol: .09, glide: note(-17), w: .3 }); tone(note(-13), { type: 'sawtooth', dur: 1.3, vol: .07, glide: note(-18), w: .3 });
+      noise(.9, { vol: .1, f: 400, to: 90, w: .3 }); },
+    alarm() { tone(note(1), { type: 'square', dur: .12, vol: .03, w: .1 }); },
+  };
+})();
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const S = {
+  text: "Scratch me. I'll heal.", ecl: 'H', code: null,
+  grid: new Uint8Array(NN), placed: new Uint8Array(NN).fill(1),
+  view: 'plain', chapter: -1, autoplay: !params.has('ch'), flat: false, sandbox: false, showDamage: true,
+  tool: 'scrape', brush: 1.4, assembleT0: -1, wave: null,
+};
+function rebuild() {
+  S.code = Q.build(S.text, S.ecl);
+  S.grid.set(S.code.modules);
+  updateCap();
+}
+
+/* =====================================================================
+   THREE.JS SCENE
+   ===================================================================== */
+const canvas = $('#gl');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); }
+catch (e) { $('#err').style.display = 'grid'; throw e; }
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
+
+const scene = new THREE.Scene();
+{ // background: soft radial gradient
+  const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(300, 230, 10, 256, 256, 420);
+  gr.addColorStop(0, '#1a2140'); gr.addColorStop(.45, '#0d1222'); gr.addColorStop(1, '#05060b');
+  g.fillStyle = gr; g.fillRect(0, 0, 512, 512);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; scene.background = tex;
+}
+scene.fog = new THREE.Fog(0x070910, 90, 220);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture; scene.environmentIntensity = .35;
+
+const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, .5, 500);
+camera.position.set(8, -18, 70);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .07; controls.minDistance = 22; controls.maxDistance = 140;
+controls.enablePan = false; controls.rotateSpeed = .6;
+
+scene.add(new THREE.HemisphereLight(0xc8d4ff, 0x20140c, .25));
+const sun = new THREE.DirectionalLight(0xfff1dd, 1.25);
+sun.position.set(-22, 30, 48); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0004; sun.shadow.normalBias = .02;
+Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 10, far: 140 });
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0x6f8cff, .35); rim.position.set(30, -10, 20); scene.add(rim);
+
+const group = new THREE.Group(); scene.add(group);
+
+// paper slab with a 4-module quiet zone
+const slab = new THREE.Mesh(new RoundedBoxGeometry(N + 8, N + 8, .8, 4, .5),
+  new THREE.MeshStandardMaterial({ color: 0xe6e0d2, roughness: .85 }));
+slab.position.z = -.4; slab.receiveShadow = true; group.add(slab);
+const under = new THREE.Mesh(new THREE.PlaneGeometry(N + 16, N + 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .35 }));
+under.position.z = -2.5; group.add(under);
+{ // soft shadow glow under the slab
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 20, 64, 64, 64); gr.addColorStop(0, 'rgba(0,0,0,.9)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128); under.material.map = new THREE.CanvasTexture(c); under.material.opacity = .8; under.scale.set(1.3, 1.3, 1);
+}
+
+// modules
+const modGeo = new RoundedBoxGeometry(.93, .93, 1, 2, .1);
+const modMat = new THREE.MeshStandardMaterial({ roughness: .68, metalness: 0, envMapIntensity: .5 });
+const mods = new THREE.InstancedMesh(modGeo, modMat, NN);
+mods.castShadow = true; mods.receiveShadow = true;
+mods.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NN * 3), 3);
+mods.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mods.instanceColor.setUsage(THREE.DynamicDrawUsage);
+group.add(mods);
+
+// invisible pick plane
+const pick = new THREE.Mesh(new THREE.PlaneGeometry(N, N), new THREE.MeshBasicMaterial({ visible: false }));
+pick.position.z = .4; group.add(pick);
+
+// brush ring (sandbox)
+const ring = new THREE.Mesh(new THREE.RingGeometry(.9, 1, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 3, 3), transparent: true, opacity: .8, depthTest: false }));
+ring.position.z = 1.2; ring.visible = false; ring.renderOrder = 10; group.add(ring);
+
+// zigzag cursor + trail
+const cursor = new THREE.Mesh(new THREE.SphereGeometry(.42, 24, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 6, 8) }));
+const cursorLight = new THREE.PointLight(0x9fd8ff, 0, 9, 1.6); cursor.add(cursorLight);
+cursor.visible = false; group.add(cursor);
+const trailPos = new Float32Array(Q.dataOrder.length * 3), trailCol = new Float32Array(Q.dataOrder.length * 3);
+const modXY = (i) => [(i % N) - HALF, HALF - Math.floor(i / N)];
+Q.dataOrder.forEach((m, k) => { const [x, y] = modXY(m); trailPos.set([x, y, 1.0], k * 3);
+  const c = new THREE.Color().setHSL(.55 + .35 * k / Q.dataOrder.length, .9, .6); trailCol.set([c.r * 1.6, c.g * 1.6, c.b * 1.6], k * 3); });
+const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3)); trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCol, 3));
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: .9 }));
+trail.visible = false; trail.renderOrder = 5; group.add(trail);
+
+// ink drop
+const drop = new THREE.Mesh(new THREE.SphereGeometry(.9, 32, 20), new THREE.MeshStandardMaterial({ color: 0x0b0c10, roughness: .15, metalness: .1 }));
+drop.visible = false; drop.castShadow = true; group.add(drop);
+
+// particle system (custom shader: per-point colour, size, alpha)
+const ptVert = `attribute float size; attribute float alpha; attribute vec3 pcolor; varying vec3 vC; varying float vA;
+  void main(){ vC=pcolor; vA=alpha; vec4 mv=modelViewMatrix*vec4(position,1.); gl_PointSize=size*(420./-mv.z); gl_Position=projectionMatrix*mv; }`;
+const ptFrag = `varying vec3 vC; varying float vA; void main(){ vec2 d=gl_PointCoord-.5; float r=length(d); if(r>.5) discard; gl_FragColor=vec4(vC, vA*smoothstep(.5,.15,r)); }`;
+function makePoints(n, blending) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  geo.setAttribute('pcolor', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(new Float32Array(n), 1));
+  geo.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array(n), 1));
+  const mat = new THREE.ShaderMaterial({ vertexShader: ptVert, fragmentShader: ptFrag, transparent: true, depthWrite: false, blending });
+  const p = new THREE.Points(geo, mat); p.frustumCulled = false; return p;
+}
+const PN = 700, parts = makePoints(PN, THREE.NormalBlending); group.add(parts);
+const pv = new Float32Array(PN * 3), plife = new Float32Array(PN), pmax = new Float32Array(PN), psz = new Float32Array(PN); let pHead = 0;
+function spawn(x, y, z, vx, vy, vz, col, size = .5, life = 1.2) {
+  const i = pHead = (pHead + 1) % PN, a = parts.geometry.attributes;
+  a.position.array.set([x, y, z], i * 3); a.pcolor.array.set([col.r, col.g, col.b], i * 3);
+  pv.set([vx, vy, vz], i * 3); plife[i] = pmax[i] = life; psz[i] = size;
+}
+const DN = 520, dust = makePoints(DN, THREE.AdditiveBlending); scene.add(dust);
+{ const a = dust.geometry.attributes;
+  for (let i = 0; i < DN; i++) { a.position.array.set([(Math.random() - .5) * 160, (Math.random() - .5) * 110, -50 + Math.random() * 80], i * 3);
+    const c = new THREE.Color().setHSL(.58 + Math.random() * .12, .6, .65); a.pcolor.array.set([c.r, c.g, c.b], i * 3);
+    a.size.array[i] = .12 + Math.random() * .35; a.alpha.array[i] = .15 + Math.random() * .35; } }
+
+// post
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .42, .45, 1.0);
+composer.addPass(bloom); composer.addPass(new OutputPass());
+
+/* ---------- colours ---------- */
+const col = (h) => new THREE.Color(h);
+const COL = {
+  ink: col('#0d0e13'), paper: col('#efe9dc'), socket: col('#b9b2a3'),
+  finder: col('#ff6b5a'), sep: col('#ffc0b4'), timing: col('#2ec4b6'), align: col('#a07cff'), format: col('#ffb703'), dark: col('#ffd166'),
+  data: col('#3a86ff'), data2: col('#5e9cff'), ec: col('#ff4f9a'), ec2: col('#ff77b3'), rem: col('#8d99ae'),
+  blockA: col('#33c3ff'), blockB: col('#ffc233'), dmg: col('#ff2d55'), fix: col('#3dffa8'), mask: col('#c08bff'), white: col('#ffffff'),
+  mode: col('#ffd166'), len: col('#c77dff'), term: col('#8d99ae'), pad: col('#2ec4b6'),
+};
+const PAL = [null, COL.finder, COL.timing, COL.align, COL.format, COL.dark, COL.data, COL.ec, COL.blockA, COL.blockB, COL.dmg, COL.fix, COL.mask, COL.white, COL.mode, COL.len, COL.term, COL.pad, COL.sep];
+const PI = Object.fromEntries(['_', 'finder', 'timing', 'align', 'format', 'dark', 'data', 'ec', 'blockA', 'blockB', 'dmg', 'fix', 'mask', 'white', 'mode', 'len', 'term', 'pad', 'sep'].map((k, i) => [k, i]));
+const ROLECOL = { finder: COL.finder, sep: COL.sep, timing: COL.timing, align: COL.align, format: COL.format, dark: COL.dark, data: COL.data, ec: COL.ec, rem: COL.rem };
+
+/* ---------- per-module visual state ---------- */
+const V = {
+  h: new Float32Array(NN).fill(.3), pulse: new Float32Array(NN), glow: new Float32Array(NN), glowT: new Float32Array(NN),
+  hl: new Uint8Array(NN), cr: new Float32Array(NN * 3), lift: new Float32Array(NN), liftV: new Float32Array(NN),
+  scatter: [], sq: [], delay: new Float32Array(NN),
+};
+for (let i = 0; i < NN; i++) {
+  const [x, y] = modXY(i), r = 30 + Math.random() * 45, th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1);
+  V.scatter.push(new THREE.Vector3(r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph) * .6 + 20));
+  V.sq.push(new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6)));
+  V.delay[i] = Math.hypot(x, y) * .045 + Math.random() * .35;
+  V.cr.set([COL.paper.r, COL.paper.g, COL.paper.b], i * 3);
+}
+function highlight(list, palKey, glow = 1) { const p = PI[palKey]; for (const i of list) { V.hl[i] = p; V.glowT[i] = glow; } }
+function clearHL(except) { for (let i = 0; i < NN; i++) { V.glowT[i] = 0; } }
+function pulse(list, amt = 1) { for (const i of list) V.pulse[i] = Math.max(V.pulse[i], amt); }
+const allIdx = [...Array(NN).keys()];
+const byRole = (r) => allIdx.filter(i => S.code.roles[i] === r);
+
+const _c = new THREE.Color(), _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _qi = new THREE.Quaternion();
+function baseColor(i, out) {
+  const v = S.grid[i], code = S.code, r = code.roles[i];
+  if (!S.placed[i]) return out.copy(COL.socket);
+  let rc = null;
+  if (S.view === 'roles') rc = ROLECOL[r];
+  else if (S.view === 'dataec') { if (r === 'data' || r === 'ec') rc = code.cwOf[i] % 2 ? (r === 'data' ? COL.data2 : COL.ec2) : (r === 'data' ? COL.data : COL.ec); else if (r === 'rem') rc = COL.rem; }
+  else if (S.view === 'blocks') { if (r === 'data' || r === 'ec') rc = code.meta[code.cwOf[i]].block ? COL.blockB : COL.blockA; }
+  if (!rc) return out.copy(v ? COL.ink : COL.paper);
+  if (v) out.copy(rc).multiplyScalar(.26); else out.copy(COL.paper).lerp(rc, .32);
+  return out;
+}
+
+/* =====================================================================
+   LAYOUT, CAMERA
+   ===================================================================== */
+let fitDist = 70; const PRESETS_INIT = [.22, -.32, 1];
+function layout() {
+  const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h);
+  bloom.setSize(w, h); camera.aspect = w / h;
+  const wide = w > 900, aspect = w / h, size = N + 9;
+  const vfov = THREE.MathUtils.degToRad(camera.fov), t = Math.tan(vfov / 2);
+  if (wide) { camera.setViewOffset(w, h, -Math.min(w * .19, 260), 0, w, h); fitDist = Math.max(size / (2 * t * .86), size / (2 * t * aspect * .6)); }
+  else { camera.setViewOffset(w, h, 0, h * .2, w, h); fitDist = Math.max(size / (2 * t * .5), size / (2 * t * aspect * .95)); }
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', layout); layout();
+camera.position.copy(new THREE.Vector3(...PRESETS_INIT).normalize().multiplyScalar(fitDist * 1.35));
+
+const PRESETS = {
+  hero: { dir: [.22, -.32, 1], d: 1.0 }, front: { dir: [.05, -.12, 1], d: .98 }, low: { dir: [-.25, -.5, 1], d: 1.02 },
+  side: { dir: [.4, -.28, 1], d: 1.0 }, zig: { dir: [.3, -.45, 1], d: 1.0 }, flat: { dir: [0, 0, 1], d: 1.0 },
+};
+let camAnim = null;
+function camTo(name, dur = 1600) {
+  const p = PRESETS[name], dir = new THREE.Vector3(...p.dir).normalize();
+  camAnim = { t0: performance.now(), dur, from: camera.position.clone(), fromT: controls.target.clone(), to: dir.multiplyScalar(fitDist * p.d), toT: new THREE.Vector3() };
+}
+
+/* =====================================================================
+   LABELS, TOOLTIP
+   ===================================================================== */
+let labels = [];
+function addLabel(text, mi, colorHex, dz = 1.3) {
+  const el = document.createElement('div'); el.className = 'lbl'; el.textContent = text; el.style.background = colorHex; el.style.opacity = 0;
+  document.body.appendChild(el); const [x, y] = typeof mi === 'number' ? modXY(mi) : mi;
+  const L = { el, pos: new THREE.Vector3(x, y, dz) }; labels.push(L); requestAnimationFrame(() => el.style.opacity = 1); return L;
+}
+function clearLabels() { for (const L of labels) { L.el.style.opacity = 0; setTimeout(() => L.el.remove(), 450); } labels = []; }
+const _lp = new THREE.Vector3();
+function updateLabels() {
+  for (const L of labels) { _lp.copy(L.pos).applyMatrix4(group.matrixWorld).project(camera);
+    L.el.style.left = ((_lp.x + 1) / 2 * innerWidth) + 'px'; L.el.style.top = ((1 - _lp.y) / 2 * innerHeight) + 'px'; }
+}
+const ROLE_TEXT = {
+  finder: ['Finder pattern', 'One of three bullseyes. Its 1:1:3:1:1 ratio is recognisable at any angle or scale.'],
+  sep: ['Separator', 'A light border that isolates each finder from the data.'],
+  timing: ['Timing pattern', 'Alternating dark/light: a ruler for the module grid.'],
+  align: ['Alignment pattern', 'Helps the decoder undo perspective and curvature.'],
+  format: ['Format information', '15 bits (stored twice): error-correction level + mask number, protected by a BCH code.'],
+  dark: ['Dark module', 'Always dark, at a fixed spot in every QR code.'],
+  rem: ['Remainder bit', 'Version 3 has 7 spare modules after the last codeword. They carry nothing.'],
+};
+
+/* =====================================================================
+   TIMING HELPERS
+   ===================================================================== */
+let runId = 0;
+const wait = (ms, id) => new Promise(r => setTimeout(() => r(id === runId), ms));
+const tweens = [];
+function tween(dur, fn, id) { return new Promise(res => tweens.push({ t0: performance.now(), dur, fn, res, id })); }
+
+/* =====================================================================
+   DAMAGE
+   ===================================================================== */
+const inFinderZone = (i) => { const r = S.code.roles[i]; return r === 'finder' || r === 'sep'; };
+function truthErrors(g) {
+  const code = S.code, cws = Q.readCodewords(g, code.mask), errs = new Array(code.E.blocks).fill(0), bad = [];
+  for (let c = 0; c < Q.TOTAL; c++) if (cws[c] !== code.final[c]) { errs[code.meta[c].block]++; bad.push(c); }
+  let dm = 0; for (let i = 0; i < NN; i++) if (g[i] !== code.modules[i]) dm++;
+  return { errs, bad, modules: dm, ratio: Math.max(...errs) / code.t };
+}
+function noisyDisk(cx, cy, r) {
+  const cells = [], seed = Math.random() * 10;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const a = Math.atan2(y - cy, x - cx), rr = r * (1 + .22 * Math.sin(a * 3 + seed) + .14 * Math.sin(a * 5 + seed * 2));
+    if (Math.hypot(x - cx, y - cy) <= rr) cells.push(y * N + x);
+  }
+  return cells;
+}
+function strip(x0, y0, ang, len, wid) {
+  const cells = [], dx = Math.cos(ang), dy = Math.sin(ang), seed = Math.random() * 10;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const px = x - x0, py = y - y0, along = px * dx + py * dy, across = -px * dy + py * dx;
+    const w = wid * (1 + .3 * Math.sin(along * .9 + seed));
+    if (along >= 0 && along <= len && Math.abs(across) <= w / 2) cells.push(y * N + x);
+  }
+  return cells;
+}
+function applyCells(g, cells, val) { for (const i of cells) if (!inFinderZone(i)) g[i] = val; }
+// Search for a random blot + scrape whose damage ratio (errors / budget) lands in [lo, hi]
+function planDamage(lo, hi, mustFail = false) {
+  let best = null;
+  for (let a = 0; a < 400; a++) {
+    const g = new Uint8Array(S.code.modules);
+    const bx = 10 + Math.random() * 15, by = 10 + Math.random() * 15, br = 1.6 + Math.random() * (mustFail ? 4 : 2.6);
+    const blot = noisyDisk(bx, by, br).filter(i => !inFinderZone(i)); applyCells(g, blot, 1);
+    const sx = 4 + Math.random() * 20, sy = 9 + Math.random() * 16, ang = Math.random() * Math.PI * 2;
+    const sc = strip(sx, sy, ang, 6 + Math.random() * (mustFail ? 16 : 9), 1.6 + Math.random() * (mustFail ? 1.6 : .8)).filter(i => !inFinderZone(i));
+    applyCells(g, sc, 0);
+    const te = truthErrors(g);
+    let ok = te.ratio >= lo && te.ratio <= hi && te.errs.every(e => e > 0 || S.code.E.blocks === 1);
+    if (ok && mustFail) { const d = Q.decode(g); ok = !d.ok || d.bytes.join() !== S.code.bytes.join(); }
+    if (ok && !mustFail) ok = Q.decode(g).ok;
+    const plan = { blot, bc: [bx, by], scrape: sc, sc: [sx, sy, ang], te };
+    if (ok) return plan;
+    if (!best || Math.abs(te.ratio - (lo + hi) / 2) < Math.abs(best.te.ratio - (lo + hi) / 2)) best = plan;
+  }
+  return best;
+}
+const tmpV = new THREE.Vector3();
+function setModule(i, val, fx = true) {
+  if (S.grid[i] === val) return false;
+  const was = S.grid[i]; S.grid[i] = val;
+  if (fx) {
+    const [x, y] = modXY(i);
+    if (was === 1 && val === 0) { for (let k = 0; k < 2; k++) spawn(x + (Math.random() - .5) * .6, y + (Math.random() - .5) * .6, .7,
+      (Math.random() - .5) * 5, (Math.random() - .5) * 5, 4 + Math.random() * 6, COL.ink, .35 + Math.random() * .3, .9 + Math.random() * .6); }
+    V.pulse[i] = Math.max(V.pulse[i], .5);
+  }
+  return true;
+}
+async function animateDrop(plan, id) {
+  const [bx, by] = plan.bc, cx = bx - HALF, cy = HALF - by;
+  drop.visible = true; drop.scale.setScalar(1); Snd.tone(900, { dur: .5, vol: .03, glide: 300, w: .4 });
+  await tween(520, (t) => { drop.position.set(cx, cy, 26 * (1 - t * t) + .8); drop.scale.set(1 - t * .2, 1 - t * .2, 1 + t * .6); }, id);
+  drop.visible = false; Snd.splat(cx / 20);
+  for (let k = 0; k < 70; k++) { const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 9;
+    spawn(cx, cy, .9, Math.cos(a) * s, Math.sin(a) * s, 3 + Math.random() * 8, COL.ink, .3 + Math.random() * .5, .5 + Math.random() * .7); }
+  const sorted = plan.blot.slice().sort((a, b) => { const [ax, ay] = modXY(a), [bx2, by2] = modXY(b); return Math.hypot(ax - cx, ay - cy) - Math.hypot(bx2 - cx, by2 - cy); });
+  sorted.forEach((i, k) => setTimeout(() => { setModule(i, 1); V.pulse[i] = 1; }, k * 6));
+  await wait(300 + sorted.length * 6, id);
+}
+async function animateScrape(plan, id) {
+  const [sx, sy, ang] = plan.sc, dx = Math.cos(ang), dy = Math.sin(ang);
+  const sorted = plan.scrape.slice().sort((a, b) => ((a % N - sx) * dx + (Math.floor(a / N) - sy) * dy) - ((b % N - sx) * dx + (Math.floor(b / N) - sy) * dy));
+  for (let k = 0; k < sorted.length; k++) {
+    const i = sorted[k]; if (setModule(i, 0)) Snd.scrape(modXY(i)[0] / 15); V.pulse[i] = Math.max(V.pulse[i], .7);
+    if (k % 3 === 2 && !(await wait(14, id))) return;
+  }
+  await wait(250, id);
+}
+
+/* =====================================================================
+   REPAIR PIPELINE (runs the real decoder on whatever the grid shows)
+   ===================================================================== */
+function blockName(b, B) { return B === 1 ? 'the block' : 'block ' + 'AB'[b]; }
+async function runRepair(id, box, fast = false) {
+  const code = S.code, res = Q.decode(S.grid), steps = document.createElement('ul'); steps.className = 'steps'; box.innerHTML = ''; box.appendChild(steps);
+  const cardEl = $('#card'), T = fast ? .45 : 1;
+  const step = (html, cls = 'run') => { const li = document.createElement('li'); li.className = cls; li.innerHTML = html; steps.appendChild(li); cardEl.scrollTop = 1e6; return li; };
+  const finish = (li, cls, html) => { li.className = cls; if (html) li.innerHTML = html; };
+  let li = step('Looking for the three finder patterns…'); Snd.blip(0);
+  highlight(Q.finders.flat(), 'finder', .8); pulse(Q.finders.flat(), .6);
+  if (!(await wait(800 * T, id))) return;
+  if (res.stage === 'locate') { finish(li, 'bad', '<b>Can\'t locate the code.</b> ' + res.reason + ' Finder patterns aren\'t protected by Reed–Solomon — they\'re what lets the camera find the grid at all.'); Snd.fail(); return res; }
+  finish(li, 'ok', 'Found all three finders → grid is 29 × 29 (Version 3).'); clearHL();
+  li = step('Reading format information…'); const fm = Q.formatPos.flat(); highlight(fm, 'format', 1); pulse(fm, .8); Snd.blip(2);
+  if (!(await wait(900 * T, id))) return;
+  if (res.stage === 'format') { finish(li, 'bad', '<b>Format unreadable.</b> ' + res.reason); Snd.fail(); return res; }
+  finish(li, 'ok', `Format bits (copy ${res.format.copy + 1}, ${res.format.d} bit${res.format.d === 1 ? '' : 's'} off from the nearest valid pattern) → level <b>${res.ecl}</b>, mask <b>${res.mask}</b>.`);
+  clearHL();
+  li = step('Unmasking and reading 70 codewords along the zigzag…');
+  await tween(1000 * T, (t) => { const n = Math.floor(t * 560); for (let k = Math.max(0, n - 14); k < n; k++) V.pulse[Q.dataOrder[k]] = Math.max(V.pulse[Q.dataOrder[k]], .45); Snd.tick(t > .5, 0, .025); }, id);
+  if (id !== runId) return;
+  finish(li, 'ok', 'Read 70 codewords; de-interleaved into ' + (res.blocks.length === 1 ? 'one block' : 'two blocks') + '.');
+  // syndromes
+  for (let b = 0; b < res.blocks.length; b++) {
+    const bl = res.blocks[b], nz = bl.res.synd.filter(v => v).length;
+    li = step(`Syndromes for ${blockName(b, res.blocks.length)}: <span class="synd mono">${bl.res.synd.map(v => `<i class="${v ? 'nz' : ''}">${hex2(v)}</i>`).join('')}</span>`);
+    bl.res.synd.forEach((v, k) => setTimeout(() => v ? Snd.tone(Snd.scale(k % 10) * 2, { type: 'triangle', dur: .06, vol: .03, w: .1 }) : 0, k * 18 * T));
+    if (!(await wait((450 + bl.res.synd.length * 18) * T, id))) return;
+    finish(li, nz ? 'bad' : 'ok', (nz ? `<b>${nz}</b> non-zero syndromes in ${blockName(b, res.blocks.length)} → something is wrong.` : `All zero → ${blockName(b, res.blocks.length)} is intact.`) +
+      `<span class="synd mono">${bl.res.synd.map(v => `<i class="${v ? 'nz' : ''}">${hex2(v)}</i>`).join('')}</span>`);
+  }
+  if (res.stage === 'rs') {
+    const failed = res.blocks.map((bl, b) => bl.res.ok ? null : blockName(b, res.blocks.length)).filter(Boolean);
+    step(`<b>Berlekamp–Massey can't find a consistent error locator for ${failed.join(' and ')}.</b> The damage needs more than ${code.t} corrections per block — past what ${code.E.ec} repair codewords can solve. The decoder refuses instead of guessing.`, 'bad');
+    const te = truthErrors(S.grid); highlight(te.bad.flatMap(c => Q.cwModules[c]), 'dmg', 1); te.bad.forEach(c => pulse(Q.cwModules[c], .8));
+    Snd.fail(); return res;
+  }
+  if (res.stage === 'parse') { step('<b>' + res.reason + '</b>', 'bad'); Snd.fail(); return res; }
+  const fixes = [];
+  res.blocks.forEach((bl, b) => bl.res.positions.forEach((p, k) => fixes.push({ c: bl.finalIdx[p], b, p, from: bl.cw[p], to: bl.res.msg[p] })));
+  if (fixes.length) {
+    li = step(`Berlekamp–Massey + Chien search locate <b>${fixes.length}</b> bad codeword${fixes.length > 1 ? 's' : ''}; Forney's formula computes what each should have been.`);
+    fixes.forEach(f => { highlight(Q.cwModules[f.c], 'dmg', 1); pulse(Q.cwModules[f.c], 1); }); Snd.alarm();
+    if (!(await wait(1100 * T, id))) return;
+    finish(li, 'ok', `Located <b>${fixes.length}</b> bad codeword${fixes.length > 1 ? 's' : ''}: ` + `<span class="synd mono">${fixes.slice(0, 40).map(f => `<i class="nz">${hex2(f.from)}→${hex2(f.to)}</i>`).join('')}</span>`);
+  } else step('No errors to correct.', 'ok');
+  // restore modules
+  const expected = Q.build(res.bytes, res.ecl, res.mask).modules;
+  li = step('Writing the corrections back…');
+  fixes.sort((a, b) => a.c - b.c);
+  for (let k = 0; k < fixes.length; k++) {
+    const cells = Q.cwModules[fixes[k].c];
+    for (const i of cells) { if (S.grid[i] !== expected[i]) { S.grid[i] = expected[i]; } V.hl[i] = PI.fix; V.glowT[i] = 1; V.pulse[i] = 1; }
+    Snd.blip(k + 3, .06, (modXY(cells[0])[0]) / 16);
+    if (!(await wait(Math.max(40, 1600 / fixes.length) * T, id))) return;
+  }
+  const rest = allIdx.filter(i => S.grid[i] !== expected[i]);
+  if (rest.length) { for (const i of rest) { S.grid[i] = expected[i]; V.hl[i] = PI.fix; V.glowT[i] = .8; V.pulse[i] = .8; } Snd.swish(); }
+  finish(li, 'ok', `Rewrote ${fixes.length} codeword${fixes.length === 1 ? '' : 's'}` + (rest.length ? ` and redrew ${rest.length} structural module${rest.length > 1 ? 's' : ''} (finders, timing, format) from the spec.` : '.'));
+  const same = res.bytes.join() === code.bytes.join();
+  const r = document.createElement('div'); r.className = 'result ' + (same ? 'ok' : 'bad');
+  r.innerHTML = (same ? 'Recovered, byte for byte:' : '⚠ Decoded — but to the <b>wrong</b> message (a mis-correction):') + `<div class="m mono">${esc(res.message)}</div>`;
+  box.appendChild(r); cardEl.scrollTop = 1e6;
+  same ? Snd.success() : Snd.fail();
+  setTimeout(() => { if (id === runId) for (let i = 0; i < NN; i++) V.glowT[i] *= 0; }, 1600);
+  return res;
+}
+
+/* =====================================================================
+   CARD WIDGETS
+   ===================================================================== */
+function metersHTML() { return `<div id="meters"></div>`; }
+function updateMeters() {
+  const el = $('#meters'); if (!el) return; const code = S.code, te = truthErrors(S.grid), B = code.E.blocks;
+  el.innerHTML = te.errs.map((e, b) => `<div class="meter ${e > code.t ? 'over' : ''}"><div class="top"><span>${B === 1 ? 'Block' : 'Block ' + 'AB'[b]} · bad codewords</span><b>${e} / ${code.t}</b></div>
+    <div class="track"><i style="width:${clamp(e / code.t, 0, 1) * 100}%"></i></div></div>`).join('') +
+    `<div class="note">${te.modules} module${te.modules === 1 ? '' : 's'} damaged → ${te.bad.length} codeword${te.bad.length === 1 ? '' : 's'} wrong. Budget = half the ${code.E.ec} repair codewords per block.</div>`;
+  return te;
+}
+function statsHTML() {
+  const c = S.code, E = c.E;
+  return `<div class="stats"><div class="stat"><b>29×29</b>modules</div><div class="stat"><b>${E.blocks * E.k}</b>message cw</div>
+    <div class="stat"><b>${E.blocks * E.ec}</b>repair cw</div><div class="stat"><b>${c.t}${E.blocks > 1 ? ' ×2' : ''}</b>fixable</div></div>`;
+}
+const K = (cls, t) => `<span class="k" style="background:var(--${cls})">${t}</span>`;
+
+/* =====================================================================
+   CHAPTERS
+   ===================================================================== */
+function resetScene({ view = 'plain', keepGrid = false } = {}) {
+  S.view = view; clearHL(); clearLabels(); if (!keepGrid) S.grid.set(S.code.modules); S.placed.fill(1);
+  trail.visible = false; cursor.visible = false; cursorLight.intensity = 0; S.sandbox = false; ring.visible = false;
+}
+const CH = [
+{ t: 'Squares that remember', cam: 'hero', chord: 0, hold: 3500,
+  html: () => `<div class="kicker">QR codes, from the inside</div><h1>Squares that remember</h1>
+    <p>A QR code is a tiny, stubborn archive. It stores a message as dark and light squares — and stores it <b>redundantly</b>, so a coffee ring, a scratch or a torn corner doesn't erase it.</p>
+    <p>The code on the right is real and scannable: Version 3, built live in your browser from the message at the top. Hover any square to see what it does.</p>
+    ${statsHTML()}<p class="note">Change the message or repair level any time. Drag to orbit. The tour plays on its own — or use ‹ › and the dots below.</p>`,
+  async enter(id) {
+    resetScene();
+    if (S.assembleT0 < 0) { S.assembleT0 = performance.now(); Snd.whoosh(2.4, .14);
+      if (!(await wait(2500, id))) return; [0, 7, 12, 16].forEach((n, i) => Snd.bell(Snd.scale(5 + i * 2), .07, i * .09)); }
+    else { S.wave = { t0: performance.now() }; Snd.swish(); }
+    await wait(4000, id);
+  } },
+{ t: 'From letters to bits', cam: 'front', chord: 1, hold: 3000,
+  html: () => `<div class="kicker">Step 1 · Encoding</div><h1>From letters to bits</h1>
+    <p>The message becomes bytes (UTF-8). In front goes a 4-bit header ${K('mode', '0100')} meaning “byte mode”, then an 8-bit ${K('len', 'length')}. Then the ${K('data', 'data')}, a short ${K('term', 'terminator')}, and ${K('pad', 'filler')} bytes <span class="mono">11101100 00010001…</span> until the message section is full.</p>
+    <p>Every 8 bits is one <b>codeword</b>. Codewords, not squares, are what error correction counts and repairs.</p>
+    <div class="widget"><div id="ring" class="mono"></div><div id="chips"></div></div>`,
+  async enter(id) {
+    resetScene(); const c = S.code, cap = c.E.blocks * c.E.k, chips = $('#chips');
+    const segOf = (bi) => c.seg[bi];
+    for (let j = 0; j < cap; j++) { const d = document.createElement('div'); d.className = 'cw';
+      d.innerHTML = [...Array(8)].map((_, b) => `<s class="${c.bits[j * 8 + b] ? '' : 'z'}" style="background:var(--${segOf(j * 8 + b)})"></s>`).join('');
+      d.title = `codeword ${j}: 0x${hex2(c.dataCw[j])}`; chips.appendChild(d); }
+    if (!(await wait(700, id))) return;
+    const dt = clamp(3600 / cap, 55, 150), ringEl = $('#ring'), text = new TextDecoder().decode(new Uint8Array(c.bytes));
+    for (let j = 0; j < cap; j++) {
+      const d = chips.children[j]; d.classList.add('lit', 'now'); setTimeout(() => d.classList.remove('now'), dt * 1.5);
+      const fIdx = c.streamToFinal(j), cells = Q.cwModules[fIdx], sg = segOf(j * 8 + 7), s0 = segOf(j * 8);
+      highlight(cells, s0 === 'data' || sg === 'data' ? 'data' : s0, 1); pulse(cells, 1);
+      const ch = c.chr.slice(j * 8, j * 8 + 8).filter(x => x >= 0);
+      if (j === 0) ringEl.innerHTML = `<span style="color:var(--mode)">0100</span> byte mode · <span style="color:var(--len)">${bin8(c.bytes.length)}</span> = ${c.bytes.length} bytes`;
+      else if (ch.length) { const ci = ch[ch.length - 1], b = c.bytes[ci]; const glyph = b >= 32 && b < 127 ? String.fromCharCode(b) : '·';
+        ringEl.innerHTML = `'<b>${esc(glyph)}</b>' → 0x${hex2(b)} → <span style="color:var(--data)">${bin8(b)}</span>`; }
+      else if (sg === 'pad') ringEl.innerHTML = `filler <span style="color:var(--pad)">${bin8(c.dataCw[j])}</span> (0x${hex2(c.dataCw[j])})`;
+      Snd.blip(c.dataCw[j] % 12, .045, (modXY(cells[0])[0]) / 16);
+      if (!(await wait(dt, id))) return;
+    }
+    ringEl.innerHTML = `${cap} message codewords ready. Next, the code gets a skeleton.`;
+    await wait(1500, id); clearHL();
+  } },
+{ t: 'The skeleton', cam: 'side', chord: 2, hold: 3500,
+  html: () => `<div class="kicker">Step 2 · Structure</div><h1>The skeleton</h1>
+    <p>Before any data goes in, fixed patterns are stamped onto the grid. They carry no message. They let a camera find the code, measure it, and learn how to read it.</p>
+    <ul class="parts" id="parts">
+      <li data-k="finder"><i style="background:var(--finder)"></i><div><b>Finder patterns</b><span>Three 7×7 bullseyes. Their 1:1:3:1:1 stripe ratio looks the same at any angle, so the camera finds the corners — and the rotation.</span></div></li>
+      <li data-k="timing"><i style="background:var(--timing)"></i><div><b>Timing patterns</b><span>Alternating stripes between the finders: a ruler that gives the module pitch.</span></div></li>
+      <li data-k="align"><i style="background:var(--align)"></i><div><b>Alignment pattern</b><span>A smaller bullseye that lets the decoder correct for perspective and curved surfaces.</span></div></li>
+      <li data-k="format"><i style="background:var(--format)"></i><div><b>Format information ×2</b><span>15 bits: repair level + mask number, with their own BCH error correction. Stored twice for safety.</span></div></li>
+      <li data-k="dark"><i style="background:var(--dark)"></i><div><b>Dark module</b><span>One square that is always dark.</span></div></li>
+    </ul>`,
+  async enter(id) {
+    resetScene(); const items = [...$('#parts').children];
+    const groups = {
+      finder: { cells: [...byRole('finder'), ...byRole('sep')], labels: [['Finder', [3, 3]], ['Finder', [N - 4, 3]], ['Finder', [3, N - 4]]] },
+      timing: { cells: byRole('timing'), labels: [['Timing', [14, 6]], ['Timing', [6, 14]]] },
+      align: { cells: byRole('align'), labels: [['Alignment', [22, 22]]] },
+      format: { cells: byRole('format'), labels: [['Format', [8, 8]], ['Format copy', [N - 4, 8]], ['Format copy', [8, N - 3]]] },
+      dark: { cells: byRole('dark'), labels: [['Dark module', [8, N - 8]]] },
+    };
+    for (let k = 0; k < items.length; k++) {
+      const key = items[k].dataset.k, g = groups[key]; items.forEach((it, j) => it.className = j < k ? 'done' : j === k ? 'on' : '');
+      highlight(g.cells, key, 1); pulse(g.cells, 1.1);
+      g.labels.forEach(([t, [x, y]]) => addLabel(t, [x - HALF, HALF - y], getComputedStyle(document.body).getPropertyValue('--' + key)));
+      Snd.bell(Snd.scale(4 + k * 2), .08, 0, (k - 2) / 3);
+      if (!(await wait(2300, id))) return;
+    }
+    items.forEach(it => it.className = 'done'); S.view = 'roles'; clearHL(); Snd.swish();
+    await wait(2200, id);
+  } },
+{ t: 'The zigzag', cam: 'zig', chord: 3, hold: 2500,
+  html: () => `<div class="kicker">Step 3 · Placement</div><h1>The zigzag</h1>
+    <p>Codewords are laid down in two-column lanes that snake up and down from the bottom-right corner, flowing around the skeleton. Each codeword fills 8 squares.</p>
+    <div class="legend"><span><i style="background:var(--data)"></i>message codewords</span><span><i style="background:var(--ec)"></i>repair codewords</span><span><i style="background:#8d99ae"></i>7 spare remainder bits</span></div>
+    <div class="widget mono" id="zstat" style="font-size:13px">…</div>
+    <p class="note">The message codewords go in first, the repair codewords after. Where the repair codewords come from is two steps ahead.</p>`,
+  async enter(id) {
+    resetScene({ view: 'dataec' }); const order = Q.dataOrder, c = S.code, zs = $('#zstat');
+    for (const m of order) S.placed[m] = 0;
+    Snd.swish(); if (!(await wait(900, id))) return;
+    trail.visible = true; cursor.visible = true; trailGeo.setDrawRange(0, 0);
+    const total = order.length, dur = 7200; let last = 0;
+    await tween(dur, (t) => {
+      const n = Math.floor(easeInOut(t) * total);
+      for (let k = last; k < n; k++) { const m = order[k]; S.placed[m] = 1; V.pulse[m] = 1;
+        if (k % 2 === 0) Snd.tick(S.grid[m], ((m % N) - HALF) / 16, .035); }
+      if (n > last) { const m = order[Math.min(n, total - 1)]; const [x, y] = modXY(m); cursor.position.set(x, y, 1.1); cursorLight.intensity = 30;
+        const cw = Math.min(69, n >> 3); zs.innerHTML = n < 560 ? `codeword <b>${cw + 1}</b> / 70 · ${c.meta[cw].ec ? '<span style="color:var(--ec)">repair</span>' : '<span style="color:var(--data)">message</span>'} · block ${'AB'[c.meta[cw].block]}${c.E.blocks === 1 ? ' (single block)' : ''}` : `remainder bit ${n - 559} / 7`; }
+      if (n >= 560 && last < 560) Snd.bell(Snd.scale(10), .06);
+      trailGeo.setDrawRange(0, n); last = n;
+    }, id);
+    if (id !== runId) return;
+    order.forEach(m => S.placed[m] = 1); cursor.visible = false; cursorLight.intensity = 0;
+    zs.innerHTML = `All 70 codewords (560 bits) + 7 remainder bits placed.`; Snd.bell(Snd.scale(7), .08);
+    await wait(2200, id); trail.visible = false;
+  } },
+{ t: 'Masking', cam: 'front', chord: 4, hold: 3000,
+  html: () => `<div class="kicker">Step 4 · Masking</div><h1>Masking</h1>
+    <p>Raw data can form big blobs, long stripes or fake bullseyes that confuse a camera. So the encoder XORs the data area with one of <b>8 fixed patterns</b>, scores each result for “ugliness”, and keeps the best.</p>
+    <div class="widget" id="masks"></div>
+    <p class="note">Score = runs of 5+ in a row + 2×2 same-colour blocks + finder-like sequences (40 each) + dark/light imbalance. The winning mask number goes into the format bits. Click a row to preview it.</p>`,
+  async enter(id) {
+    resetScene(); const c = S.code, box = $('#masks'), maxP = Math.max(...c.pen.map(p => p.total));
+    box.innerHTML = c.pen.map((p, m) => `<div class="mrow" data-m="${m}"><canvas width="12" height="12"></canvas><span class="mono">mask ${m}</span><div class="bar"><i></i></div><span class="mono" style="text-align:right">${p.total}</span></div>`).join('');
+    [...box.children].forEach((row, m) => { const g = row.querySelector('canvas').getContext('2d');
+      for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) { g.fillStyle = Q.maskFn(m, x, y) ? '#c08bff' : '#1b1f2e'; g.fillRect(x, y, 1, 1); }
+      row.onclick = () => { pauseTour(); showMask(m, true); }; });
+    const showMask = (m, flash) => { const prev = new Uint8Array(S.grid); S.grid.set(c.variants[m]);
+      [...box.children].forEach((r, k) => r.classList.toggle('on', k === m));
+      if (flash) { const fl = Q.dataOrder.filter(i => prev[i] !== S.grid[i]); highlight(fl, 'mask', .7); pulse(fl, .6); setTimeout(() => fl.forEach(i => V.glowT[i] = 0), 300); Snd.swish(.05); } };
+    S.grid.set(c.raw); addLabel('Unmasked data', [0, HALF + 2.5], '#c08bff', .5);
+    if (!(await wait(1600, id))) return; clearLabels();
+    for (let m = 0; m < 8; m++) { showMask(m, true); box.children[m].querySelector('.bar i').style.width = (c.pen[m].total / maxP * 100) + '%';
+      Snd.tone(Snd.scale(m + 2), { type: 'triangle', dur: .3, vol: .05 });
+      if (!(await wait(950, id))) return; }
+    showMask(c.mask, false); box.children[c.mask].classList.add('win'); const p = c.pen[c.mask];
+    addLabel(`Mask ${c.mask} wins · score ${p.total}`, [0, HALF + 2.5], '#3dffa8', .5);
+    const rowEl = document.createElement('div'); rowEl.className = 'note mono'; rowEl.style.marginTop = '8px';
+    rowEl.textContent = `winner: runs ${p.n1} + blocks ${p.n2} + finder-like ${p.n3} + balance ${p.n4} = ${p.total}`; box.appendChild(rowEl);
+    Snd.bell(Snd.scale(9), .08); await wait(2600, id);
+  } },
+{ t: 'Repair codewords', cam: 'hero', chord: 5, hold: 4500,
+  html: () => { const c = S.code, E = c.E; return `<div class="kicker">Step 5 · Reed–Solomon</div><h1>Repair codewords</h1>
+    <p>Here's the trick. The ${E.k} message codewords of a block are treated as the coefficients of a polynomial <i>M(x)</i>. The encoder divides <i>M(x)·x<sup>${E.ec}</sup></i> by a fixed <b>generator polynomial</b> and appends the remainder — those are the ${E.ec} ${K('ec', 'repair codewords')}.</p>
+    <div class="eq mono">g(x) = (x−α⁰)(x−α¹)…(x−α<sup>${E.ec - 1}</sup>)<br>block(x) = M(x)·x<sup>${E.ec}</sup> − remainder<br>⇒ block(α<sup>i</sup>) = 0 for every root</div>
+    <p>So an intact block evaluates to <b>zero</b> at every root of <i>g</i>. Damage makes those values — the <b>syndromes</b> — non-zero, and they're a fingerprint of the errors. With ${E.ec} syndromes the decoder can solve for up to <b>${c.t}</b> wrong codewords: both <i>where</i> they are and <i>what</i> they should be.</p>
+    <div class="widget" id="blk"></div>
+    ${E.blocks > 1 ? `<p class="note">At level ${c.ecl} the codewords form two blocks, ${K('blockA', 'A')} and ${K('blockB', 'B')}, interleaved A1 B1 A2 B2… so one blot is split across both budgets.</p>` : `<p class="note">At level ${c.ecl} Version 3 uses a single block. Try Q or H to see interleaving.</p>`}`; },
+  async enter(id) {
+    resetScene({ view: 'dataec' }); const c = S.code, E = c.E, box = $('#blk');
+    box.innerHTML = `<div class="legend"><span><i style="background:var(--data)"></i>message</span><span><i style="background:var(--ec)"></i>repair</span></div>` +
+      c.blocks.map((bl, b) => `<div class="brow"><span class="lab">${E.blocks === 1 ? 'Block' : 'Block ' + 'AB'[b]}</span><div class="bcells">${[...bl.d, ...bl.e].map((v, k) => `<i title="0x${hex2(v)}" style="background:var(--${k < E.k ? 'data' : 'ec'})"></i>`).join('')}</div></div>`).join('');
+    const rows = [...box.querySelectorAll('.bcells')];
+    for (let k = 0; k < E.k + E.ec; k++) {
+      rows.forEach((r, b) => { r.children[k].classList.add('lit'); const f = k < E.k ? k * E.blocks + b : E.k * E.blocks + (k - E.k) * E.blocks + b;
+        pulse(Q.cwModules[f], k < E.k ? .5 : 1.1); });
+      if (k === E.k) Snd.bell(Snd.scale(8), .07);
+      if (k >= E.k) Snd.blip(k - E.k, .04);
+      if (!(await wait(k < E.k ? 45 : 85, id))) return;
+    }
+    if (E.blocks > 1) { if (!(await wait(1800, id))) return; S.view = 'blocks'; Snd.swish();
+      addLabel('Block A', Q.cwModules[0][0], '#33c3ff'); addLabel('Block B', Q.cwModules[1][0], '#ffc233');
+      for (let k = 0; k < 12; k++) { pulse(Q.cwModules[k], 1.2); Snd.tick(k % 2, 0, .05); if (!(await wait(160, id))) return; } }
+    await wait(2500, id);
+  } },
+{ t: 'Damage', cam: 'low', chord: 0, hold: 2500,
+  html: () => `<div class="kicker">Step 6 · Real life happens</div><h1>Damage</h1>
+    <p>A drop of ink lands. Something scrapes across the print. Some squares flip from light to dark, others from dark to light.</p>
+    <p>But the repair math counts <b>codewords</b>, not squares: eight ruined squares in one codeword cost a single error. That's why QR codes cope well with compact blots.</p>
+    <div class="widget">${metersHTML()}</div>
+    <p class="note">(The meters peek at the original to count damage. The decoder in the next step gets no such help.)</p>`,
+  async enter(id) {
+    resetScene(); updateMeters(); if (!(await wait(900, id))) return;
+    const plan = planDamage(.55, .92); plan.code = S.code; S.lastPlan = plan;
+    await animateDrop(plan, id); if (id !== runId) return; updateMeters();
+    if (!(await wait(700, id))) return;
+    await animateScrape(plan, id); if (id !== runId) return;
+    const te = updateMeters(); highlight(te.bad.flatMap(c => Q.cwModules[c]), 'dmg', .55);
+    if (!(await wait(1400, id))) return; clearHL(); await wait(1200, id);
+  } },
+{ t: 'Repair', cam: 'front', chord: 2, hold: 4000,
+  html: () => `<div class="kicker">Step 7 · Decoding</div><h1>Repair</h1>
+    <p>Now the real decoder runs on exactly what's on screen. It knows only the QR standard, not the original.</p>
+    <div class="widget" id="rep"></div>`,
+  async enter(id) {
+    resetScene({ keepGrid: true });
+    if (truthErrors(S.grid).modules === 0) { const plan = S.lastPlan && S.lastPlan.code === S.code ? S.lastPlan : planDamage(.55, .92);
+      applyCells(S.grid, plan.blot, 1); applyCells(S.grid, plan.scrape, 0); Snd.splat(); }
+    if (!(await wait(700, id))) return;
+    await runRepair(id, $('#rep'));
+    await wait(2500, id);
+  } },
+{ t: 'Past the limit', cam: 'low', chord: 4, hold: 4000,
+  html: () => `<div class="kicker">Step 8 · Limits</div><h1>Past the limit</h1>
+    <p>Every block has a budget: <b>half</b> its repair codewords. Exceed it and the equations no longer have one clear answer. A good decoder notices and refuses instead of guessing.</p>
+    <div class="widget">${metersHTML()}</div><div class="widget" id="rep2"></div>
+    <p class="note">The levels trade capacity for safety: L ≈ 7%, M ≈ 15%, Q ≈ 25%, H ≈ 30% of codewords recoverable (Version 3 here: ${['L', 'M', 'Q', 'H'].map(l => { const E = Q.ECL[l]; return `${l} ${Math.floor(E.ec / 2)}/${E.k + E.ec}`; }).join(', ')} per block).</p>`,
+  async enter(id) {
+    resetScene(); updateMeters(); if (!(await wait(800, id))) return;
+    const plan = planDamage(1.25, 2.2, true);
+    await animateDrop(plan, id); if (id !== runId) return; updateMeters();
+    await animateScrape(plan, id); if (id !== runId) return; updateMeters();
+    if (!(await wait(800, id))) return;
+    await runRepair(id, $('#rep2'), true);
+    await wait(2000, id);
+  } },
+{ t: 'Your turn', cam: 'front', chord: 1, hold: 0,
+  html: () => `<div class="kicker">Sandbox</div><h1>Your turn</h1>
+    <p>Drag across the code to damage it, then hit <b>Repair</b>. Try to find the edge: how much can you destroy and still get the message back? What happens if you scratch a finder, or both copies of the format bits?</p>
+    <div class="tools" id="tools">
+      <button class="tbtn" data-t="scrape">⌫ Scrape (→ light)</button><button class="tbtn" data-t="ink">● Ink (→ dark)</button><button class="tbtn" data-t="flip">◐ Flip</button>
+    </div>
+    <div class="row">Brush <input type="range" id="brush" min="0.5" max="4" step="0.1" value="${S.brush}"> <label><input type="checkbox" id="showdmg" ${S.showDamage ? 'checked' : ''}> show damage</label></div>
+    <div class="tools"><button class="tbtn" id="rblot">Random blot</button><button class="tbtn" id="rscr">Random scratch</button><button class="tbtn" id="rest">Restore</button><button class="tbtn primary" id="rfix">Repair ▸</button></div>
+    <div class="widget">${metersHTML()}</div><div id="rep3"></div>
+    <p class="note">Tip: use “Face camera” at the top and scan the screen with your phone — before and after damage.</p>`,
+  async enter(id) {
+    resetScene(); S.sandbox = true; updateMeters();
+    const tb = $('#tools'); const setTool = (t) => { S.tool = t; [...tb.children].forEach(b => b.classList.toggle('on', b.dataset.t === t)); };
+    setTool(S.tool); tb.onclick = (e) => { const b = e.target.closest('button'); if (b) { setTool(b.dataset.t); Snd.click(); } };
+    $('#brush').oninput = (e) => S.brush = +e.target.value;
+    $('#showdmg').onchange = (e) => S.showDamage = e.target.checked;
+    const lock = async (fn) => { const myId = ++runId; S.sandbox = true; await fn(myId); updateMeters(); };
+    $('#rblot').onclick = () => lock(async (i) => { const b = 6 + Math.random() * 17, c = 6 + Math.random() * 17;
+      await animateDrop({ bc: [b, c], blot: noisyDisk(b, c, 1.5 + Math.random() * 2.5) }, i); });
+    $('#rscr').onclick = () => lock(async (i) => { const sx = 2 + Math.random() * 25, sy = 2 + Math.random() * 25, a = Math.random() * 6.28;
+      await animateScrape({ sc: [sx, sy, a], scrape: strip(sx, sy, a, 6 + Math.random() * 12, 1 + Math.random() * 1.5) }, i); });
+    $('#rest').onclick = () => { runId++; clearHL(); S.grid.set(S.code.modules); pulse(allIdx, .3); Snd.swish(); $('#rep3').innerHTML = ''; updateMeters(); };
+    $('#rfix').onclick = () => lock(async (i) => { clearHL(); await runRepair(i, $('#rep3'), true); });
+  } },
+];
+
+/* ---------- chapter navigation ---------- */
+const dots = $('#dots');
+CH.forEach((ch, i) => { const b = document.createElement('button'); b.dataset.t = (i + 1) + '. ' + ch.t; b.innerHTML = '<i></i>';
+  b.onclick = () => { pauseTour(); go(i); }; dots.appendChild(b); });
+let holdAnim = null;
+async function go(i) {
+  i = clamp(i, 0, CH.length - 1); const id = ++runId; S.chapter = i; holdAnim = null;
+  if (S.assembleT0 < 0 && i !== 0) { S.assembleT0 = performance.now(); Snd.whoosh(2.4, .12); }
+  const card = $('#card'); card.classList.add('swap');
+  [...dots.children].forEach((d, k) => { d.classList.toggle('on', k === i); d.classList.toggle('seen', k < i); d.querySelector('i').style.width = '0'; });
+  await new Promise(r => setTimeout(r, 220)); if (id !== runId) return;
+  card.innerHTML = CH[i].html(); card.scrollTop = 0; card.classList.remove('swap');
+  if (!S.flat) camTo(CH[i].cam); Snd.chord(CH[i].chord);
+  await CH[i].enter(id);
+  if (id !== runId || !S.autoplay || i >= CH.length - 1) return;
+  holdAnim = { t0: performance.now(), dur: CH[i].hold, i };
+  await wait(CH[i].hold, id);
+  if (id === runId && S.autoplay) go(i + 1);
+}
+function setPlayIcon() { $('#play').textContent = S.autoplay ? '❚❚' : '▶'; }
+function pauseTour() { if (S.autoplay) { S.autoplay = false; setPlayIcon(); holdAnim = null; } }
+$('#prev').onclick = () => { pauseTour(); Snd.click(); go(S.chapter - 1); };
+$('#next').onclick = () => { pauseTour(); Snd.click(); go(S.chapter + 1); };
+$('#play').onclick = () => { S.autoplay = !S.autoplay; setPlayIcon(); Snd.click(); if (S.autoplay) go(S.chapter >= CH.length - 1 ? 0 : S.chapter + 1); };
+addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') $('#next').click(); else if (e.key === 'ArrowLeft') $('#prev').click();
+  else if (e.key === ' ') { e.preventDefault(); $('#play').click(); }
+});
+
+/* ---------- top controls ---------- */
+const msgEl = $('#msg'), capEl = $('#cap');
+function updateCap() {
+  const n = Q.utf8(S.text).length, mx = Q.maxBytes(S.ecl); capEl.textContent = `${Math.min(n, mx)}/${mx} B`; capEl.classList.toggle('over', n > mx);
+  [...$('#ecl').children].forEach(b => b.classList.toggle('on', b.dataset.l === S.ecl));
+}
+let rebuildT = 0;
+function changed() { clearTimeout(rebuildT); rebuildT = setTimeout(() => { rebuild(); go(S.chapter); }, 450); }
+msgEl.value = S.text;
+msgEl.addEventListener('input', () => {
+  let t = msgEl.value; const mx = Q.maxBytes(S.ecl);
+  while (Q.utf8(t).length > mx) t = [...t].slice(0, -1).join('');
+  if (t !== msgEl.value) { msgEl.value = t; capEl.classList.add('over'); setTimeout(() => capEl.classList.remove('over'), 600); }
+  S.text = t || ' '; pauseTour(); updateCap(); changed();
+});
+$('#ecl').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; S.ecl = b.dataset.l; Snd.click();
+  const mx = Q.maxBytes(S.ecl); let t = S.text; while (Q.utf8(t).length > mx) t = [...t].slice(0, -1).join(''); S.text = t; msgEl.value = t;
+  updateCap(); pauseTour(); rebuild(); go(S.chapter); };
+$('#snd').onclick = (e) => { e.stopPropagation(); Snd.init(); const on = Snd.toggle(); $('#snd').textContent = on ? '♪ Sound: on' : '♪ Sound: off'; hideToast(); };
+$('#flat').onclick = () => { S.flat = !S.flat; $('#flat').classList.toggle('on', S.flat); camTo(S.flat ? 'flat' : CH[S.chapter].cam, 1200); Snd.click(); };
+function hideToast() { $('#toast').style.opacity = 0; setTimeout(() => $('#toast').remove?.(), 700); }
+const unlock = () => { if (!Snd.ready) { Snd.init(); Snd.chord(CH[Math.max(0, S.chapter)].chord); hideToast(); } };
+addEventListener('pointerdown', unlock, { capture: true }); addEventListener('keydown', unlock, { capture: true });
+
+/* =====================================================================
+   POINTER: hover tooltip + sandbox painting
+   ===================================================================== */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), tip = $('#tip');
+let hoverI = -1, painting = false, lastPaint = null;
+function hitModule(e) {
+  const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera); const h = ray.intersectObject(pick)[0]; if (!h) return null;
+  const p = group.worldToLocal(h.point.clone()); const x = Math.round(p.x + HALF), y = Math.round(HALF - p.y);
+  if (x < 0 || y < 0 || x >= N || y >= N) return null; return { x, y, fx: p.x + HALF, fy: HALF - p.y, i: y * N + x, lp: p };
+}
+function paint(h) {
+  const r = S.tool === 'flip' ? 0 : S.brush;
+  const pts = [[h.fx, h.fy]];
+  if (lastPaint) { const d = Math.hypot(h.fx - lastPaint[0], h.fy - lastPaint[1]), n = Math.ceil(d / .4);
+    for (let k = 1; k < n; k++) pts.push([lastPaint[0] + (h.fx - lastPaint[0]) * k / n, lastPaint[1] + (h.fy - lastPaint[1]) * k / n]); }
+  lastPaint = [h.fx, h.fy]; let any = false;
+  for (const [fx, fy] of pts) {
+    if (S.tool === 'flip') { const i = Math.round(fy) * N + Math.round(fx); setModule(i, S.grid[i] ^ 1); any = true; continue; }
+    for (let y = Math.floor(fy - r); y <= Math.ceil(fy + r); y++) for (let x = Math.floor(fx - r); x <= Math.ceil(fx + r); x++) {
+      if (x < 0 || y < 0 || x >= N || y >= N || Math.hypot(x - fx, y - fy) > r) continue;
+      if (setModule(y * N + x, S.tool === 'ink' ? 1 : 0)) any = true;
+    }
+  }
+  if (any) { S.tool === 'ink' ? Snd.ink((h.fx - HALF) / 15) : Snd.scrape((h.fx - HALF) / 15); updateMeters(); }
+}
+canvas.addEventListener('pointerdown', (e) => {
+  if (!S.sandbox || e.button !== 0) return; const h = hitModule(e); if (!h) return;
+  controls.enabled = false; painting = true; lastPaint = null; canvas.setPointerCapture(e.pointerId); runId++; paint(h);
+  if (S.tool === 'flip') { painting = false; controls.enabled = true; }
+}, { capture: true });
+addEventListener('pointerup', () => { if (painting) { painting = false; controls.enabled = true; } });
+canvas.addEventListener('pointermove', (e) => {
+  const h = hitModule(e);
+  if (painting && h && S.tool !== 'flip') paint(h);
+  if (S.sandbox && h) { ring.visible = true; ring.position.set(h.lp.x, h.lp.y, 1.2); const s = S.tool === 'flip' ? .6 : S.brush + .5; ring.scale.set(s, s, 1); }
+  else ring.visible = false;
+  if (!h || painting) { tip.style.opacity = 0; hoverI = -1; return; }
+  hoverI = h.i; const c = S.code, r = c.roles[h.i]; let html;
+  if (r === 'data' || r === 'ec') { const cw = c.cwOf[h.i], m = c.meta[cw];
+    html = `<b>${r === 'data' ? 'Message' : 'Repair'} codeword ${cw + 1}/70</b><br>bit ${c.bitOf[h.i] + 1} of 8 · ${c.E.blocks > 1 ? 'block ' + 'AB'[m.block] + ' · ' : ''}value 0x${hex2(c.final[cw])}<br>${S.grid[h.i] ? 'dark' : 'light'} square${S.grid[h.i] !== c.modules[h.i] ? ' · <span style="color:#ff6b8b">damaged</span>' : ''}`;
+    for (const i of Q.cwModules[cw]) V.pulse[i] = Math.max(V.pulse[i], .35); }
+  else { const [a, b] = ROLE_TEXT[r]; html = `<b>${a}</b><br>${b}`; }
+  tip.innerHTML = html + `<br><span style="color:#5d6680">row ${h.y}, col ${h.x}</span>`; tip.style.opacity = 1;
+  tip.style.left = Math.min(innerWidth - 250, e.clientX + 16) + 'px'; tip.style.top = (e.clientY + 14) + 'px';
+});
+canvas.addEventListener('pointerleave', () => { tip.style.opacity = 0; ring.visible = false; });
+
+/* =====================================================================
+   FRAME LOOP
+   ===================================================================== */
+let lastT = performance.now();
+function easeInOut(t) { return ease(t); }
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(.1, (now - lastT) / 1000); lastT = now; const time = now / 1000;
+  // tweens
+  for (let k = tweens.length - 1; k >= 0; k--) { const tw = tweens[k];
+    if (tw.id !== undefined && tw.id !== runId) { tweens.splice(k, 1); tw.res(); continue; }
+    const t = clamp((now - tw.t0) / tw.dur, 0, 1); tw.fn(t); if (t >= 1) { tweens.splice(k, 1); tw.res(); } }
+  // camera
+  if (camAnim) { const t = ease(clamp((now - camAnim.t0) / camAnim.dur, 0, 1));
+    camera.position.lerpVectors(camAnim.from, camAnim.to, t); controls.target.lerpVectors(camAnim.fromT, camAnim.toT, t); if (t >= 1) camAnim = null; }
+  controls.update();
+  // gentle sway
+  const swayOn = !S.flat && !S.sandbox && !painting;
+  const ty = swayOn ? Math.sin(time * .23) * .07 : 0, tx = swayOn ? Math.sin(time * .17 + 1) * .04 : 0;
+  group.rotation.y += (ty - group.rotation.y) * Math.min(1, dt * 2); group.rotation.x += (tx - group.rotation.x) * Math.min(1, dt * 2);
+  group.updateMatrixWorld();
+  // wave
+  let waveR = -1; if (S.wave) { waveR = (now - S.wave.t0) / 1000 * 26; if (waveR > 30) S.wave = null; }
+  // modules
+  const asm = S.assembleT0 < 0 ? 0 : (now - S.assembleT0) / 1000, ic = mods.instanceColor.array, code = S.code;
+  const decay = Math.exp(-dt * 3.2), glowK = 1 - Math.exp(-dt * 6), colK = 1 - Math.exp(-dt * 22), hK = 1 - Math.exp(-dt * 11), tint = S.showDamage && S.chapter >= 6;
+  for (let i = 0; i < NN; i++) {
+    const v = S.grid[i]; const [x, y] = modXY(i);
+    if (waveR >= 0) { const d = Math.hypot(x, y); if (Math.abs(d - waveR) < 1) V.pulse[i] = Math.max(V.pulse[i], .55); }
+    const target = S.placed[i] ? (v ? .62 : .14) : .03;
+    V.h[i] += (target - V.h[i]) * hK;
+    V.pulse[i] *= decay; V.glow[i] += (V.glowT[i] - V.glow[i]) * glowK;
+    baseColor(i, _c);
+    if (tint && v !== code.modules[i] && S.placed[i]) _c.lerp(COL.dmg, v ? .38 : .5);
+    if (V.glow[i] > .003 && V.hl[i]) _c.lerp(PAL[V.hl[i]], V.glow[i] * (v ? .75 : .55));
+    const br = 1 + V.pulse[i] * 1.5 + (V.glow[i] * .25);
+    const k3 = i * 3; V.cr[k3] += (_c.r * br - V.cr[k3]) * colK; V.cr[k3 + 1] += (_c.g * br - V.cr[k3 + 1]) * colK; V.cr[k3 + 2] += (_c.b * br - V.cr[k3 + 2]) * colK;
+    ic[k3] = V.cr[k3]; ic[k3 + 1] = V.cr[k3 + 1]; ic[k3 + 2] = V.cr[k3 + 2];
+    const h = V.h[i], z = h / 2 + V.pulse[i] * .35;
+    const a = S.assembleT0 < 0 ? 0 : easeOut(clamp((asm - V.delay[i]) / 1.3, 0, 1));
+    if (a < 1) { _p.set(x, y, z).lerp(V.scatter[i], 1 - a); _q.copy(V.sq[i]).slerp(_qi, a); }
+    else { _p.set(x, y, z); _q.identity(); }
+    _s.set(1, 1, h); _m.compose(_p, _q, _s); mods.setMatrixAt(i, _m);
+  }
+  mods.instanceMatrix.needsUpdate = true; mods.instanceColor.needsUpdate = true;
+  // particles
+  { const a = parts.geometry.attributes, P = a.position.array;
+    for (let i = 0; i < PN; i++) { if (plife[i] <= 0) { a.alpha.array[i] = 0; continue; }
+      plife[i] -= dt; pv[i * 3 + 2] -= 22 * dt; P[i * 3] += pv[i * 3] * dt; P[i * 3 + 1] += pv[i * 3 + 1] * dt; P[i * 3 + 2] = Math.max(.3, P[i * 3 + 2] + pv[i * 3 + 2] * dt);
+      if (P[i * 3 + 2] <= .3) { pv[i * 3] *= .8; pv[i * 3 + 1] *= .8; pv[i * 3 + 2] = 0; }
+      const l = plife[i] / pmax[i]; a.alpha.array[i] = Math.min(1, l * 2); a.size.array[i] = psz[i] * (.4 + .6 * l); }
+    a.position.needsUpdate = a.alpha.needsUpdate = a.size.needsUpdate = true; }
+  { const P = dust.geometry.attributes.position.array; for (let i = 0; i < DN; i++) { P[i * 3 + 1] += dt * (.3 + (i % 7) * .08); P[i * 3] += Math.sin(time * .2 + i) * dt * .2; if (P[i * 3 + 1] > 55) P[i * 3 + 1] = -55; }
+    dust.geometry.attributes.position.needsUpdate = true; }
+  if (cursor.visible) cursor.scale.setScalar(1 + Math.sin(time * 14) * .15);
+  // tour progress
+  if (holdAnim && S.autoplay) { const d = dots.children[holdAnim.i]; if (d) d.querySelector('i').style.width = clamp((now - holdAnim.t0) / holdAnim.dur, 0, 1) * 100 + '%'; }
+  updateLabels();
+  composer.render();
+}
+
+/* ---------- boot ---------- */
+rebuild(); setPlayIcon();
+requestAnimationFrame(frame);
+const startCh = params.has('ch') ? +params.get('ch') : 0;
+if (params.has('ch')) { S.assembleT0 = 0; }
+go(startCh);
+window.__S = S; window.__go = go; window.__cam = camera; window.__ctl = controls;
+</script>
+<script>
+  // If the module script never booted (CDN blocked / no WebGL), say so instead of showing a blank page.
+  setTimeout(() => { if (!window.__booted) document.getElementById('err').style.display = 'grid'; }, 6000);
+</script>
+</body>
+</html>

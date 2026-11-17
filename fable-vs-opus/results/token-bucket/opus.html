@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Token Bucket Rate Limiter</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1117; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+/*
+ * Token bucket rate limiter explainer.
+ * Every frame is a pure function of time: renderFrame(t) draws the scene at
+ * t seconds using only constants and t. No state carries between frames.
+ *   - Autoplays (looping) when opened.
+ *   - index.html?t=12.5  renders a single still frame at t = 12.5 s.
+ *   - window.renderFrame(t) and window.DURATION are exposed for screenshotting.
+ */
+(() => {
+  'use strict';
+
+  // ---------- constants ----------
+  const W = 1280, H = 720;          // virtual resolution
+  const D = 32;                     // loop duration (s)
+  const RATE = 1;                   // tokens per second
+  const CAP = 5;                    // bucket capacity
+  const TRAVEL = 1.2;               // seconds for a request to reach the gate
+  const COIN_FALL = 0.3;            // seconds for a token to drop to the gate
+  const OUT = 1.1;                  // seconds after decision for exit animation
+
+  const C = {
+    bg: '#0d1117', panel: '#161b22', line: '#30363d', text: '#e6edf3',
+    dim: '#8b949e', coin: '#f2c14e', coinEdge: '#b8860b',
+    ok: '#3fb950', bad: '#f85149', req: '#58a6ff', water: '#1f2a3a'
+  };
+
+  // Geometry
+  const BX = 640, BTOP = 200, BBOT = 425, BW = 170;   // bucket
+  const TAP_Y = 150;
+  const LANE_Y = 500, GATE_X = BX;
+  const CLIENT_X = 120, SERVER_X = 1160;
+  const COIN_R = 19;
+  const G = { x0: 110, x1: 1180, y0: 690, y1: 600 };  // graph box (y0 bottom)
+
+  // ---------- deterministic request schedule ----------
+  const times = [];
+  [6, 7.5, 9, 10.5, 12].forEach(x => times.push(x));            // light traffic
+  for (let k = 0; k < 8; k++) times.push(13 + 0.12 * k);         // burst
+  for (let k = 0; k < 18; k++) times.push(15 + 0.4 * k);         // sustained overload
+  for (let k = 0; k < 4; k++) times.push(27 + 0.15 * k);         // burst after idle
+
+  // Pure simulation: decisions derived only from the constants above.
+  const events = (() => {
+    let tok = 0, last = 0;
+    return times.map(ta => {
+      tok = Math.min(CAP, tok + RATE * (ta - last)); last = ta;
+      const ok = tok >= 1;
+      if (ok) tok -= 1;
+      return { ta, ok };
+    });
+  })();
+
+  // Token level at time t (re-simulated from 0 every call: pure).
+  function tokensAt(t) {
+    let tok = 0, last = 0;
+    for (const e of events) {
+      if (e.ta > t) break;
+      tok = Math.min(CAP, tok + RATE * (e.ta - last)); last = e.ta;
+      if (e.ok) tok -= 1;
+    }
+    return Math.min(CAP, tok + RATE * (t - last));
+  }
+
+  // ---------- helpers ----------
+  const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+  const lerp = (a, b, u) => a + (b - a) * u;
+  const ease = u => { u = clamp(u); return u * u * (3 - 2 * u); };
+  const easeIn = u => { u = clamp(u); return u * u; };
+  // fade in over [a, a+f], out over [b-f, b]
+  const window01 = (t, a, b, f = 0.4) => clamp((t - a) / f) * clamp((b - t) / f);
+
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function text(s, x, y, size, color, align = 'left', weight = '500') {
+    ctx.font = `${weight} ${size}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`;
+    ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle';
+    ctx.fillText(s, x, y);
+  }
+
+  function coin(x, y, s = 1, alpha = 1) {
+    if (s <= 0.01 || alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.translate(x, y); ctx.scale(s, s);
+    ctx.beginPath(); ctx.arc(0, 0, COIN_R, 0, Math.PI * 2);
+    ctx.fillStyle = C.coin; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = C.coinEdge; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, COIN_R - 6, 0, Math.PI * 2);
+    ctx.lineWidth = 1.5; ctx.stroke();
+    text('T', 0, 1, 16, C.coinEdge, 'center', '800');
+    ctx.restore();
+  }
+
+  function slotPos(i) { // i-th coin in the stack (0 = bottom)
+    const zig = (i % 2 ? 1 : -1) * 14;
+    return { x: BX + zig, y: BBOT - 8 - COIN_R - i * (COIN_R * 2 + 4) };
+  }
+
+  // ---------- scene ----------
+  const captions = [
+    [0, 6,    'Tokens drip into the bucket at a fixed rate r = 1 token/s, up to capacity b = 5.'],
+    [6, 12.8, 'Every request must take one token to pass. Light traffic: tokens are always there.'],
+    [12.8, 14.8, 'A burst! Up to b requests pass instantly… then the bucket is empty → 429.'],
+    [14.8, 22.6, 'Sustained overload: only ~r requests/s get through. The refill rate is the long-run limit.'],
+    [22.6, 26.8, 'Quiet period: unused tokens accumulate again, but never beyond b.'],
+    [26.8, 32.5, 'Burst capacity restored. Two knobs: r = average rate, b = largest burst.']
+  ];
+
+  function drawStatic(t) {
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+
+    text('Token Bucket Rate Limiter', 60, 46, 34, C.text, 'left', '700');
+    for (const [a, b, s] of captions) {
+      const al = window01(t, a, b, 0.35);
+      if (al > 0) { ctx.globalAlpha = al; text(s, 60, 90, 21, C.dim); ctx.globalAlpha = 1; }
+    }
+
+    // lane
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(CLIENT_X + 60, LANE_Y); ctx.lineTo(SERVER_X - 60, LANE_Y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // client and server boxes
+    for (const [x, label, sub] of [[CLIENT_X, 'Clients', 'send requests'], [SERVER_X, 'Server', 'protected']]) {
+      roundRect(x - 60, LANE_Y - 42, 120, 84, 12);
+      ctx.fillStyle = C.panel; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.stroke();
+      text(label, x, LANE_Y - 10, 19, C.text, 'center', '700');
+      text(sub, x, LANE_Y + 16, 13, C.dim, 'center');
+    }
+
+    // tap / pipe
+    ctx.fillStyle = '#2d333b';
+    ctx.fillRect(440, TAP_Y - 30, BX - 440 + 14, 18);
+    ctx.fillRect(BX - 14, TAP_Y - 30, 28, 30);
+    text(`refill  r = ${RATE} token/s`, 430, TAP_Y - 21, 14, C.dim, 'right');
+  }
+
+  function drawBucket(t, disp) {
+    const l = BX - BW / 2, r = BX + BW / 2;
+    // body
+    ctx.beginPath();
+    ctx.moveTo(l - 12, BTOP); ctx.lineTo(l, BBOT); ctx.lineTo(r, BBOT); ctx.lineTo(r + 12, BTOP);
+    ctx.fillStyle = C.water; ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#6e7681'; ctx.lineJoin = 'round'; ctx.stroke();
+    // capacity marks
+    for (let i = 1; i <= CAP; i++) {
+      const y = BBOT - 8 - i * (COIN_R * 2 + 4) + 2;
+      ctx.strokeStyle = 'rgba(139,148,158,0.25)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(r - 18, y); ctx.lineTo(r - 2, y); ctx.stroke();
+      text(String(i), r + 18, y, 12, 'rgba(139,148,158,0.6)', 'left');
+    }
+    text(`capacity b = ${CAP}`, r + 22, BTOP - 4, 14, C.dim);
+
+    // spout to the gate
+    ctx.fillStyle = '#2d333b'; ctx.fillRect(BX - 12, BBOT, 24, 22);
+
+    // coins
+    const n = Math.floor(disp + 1e-9);
+    for (let i = 0; i < Math.min(n, CAP); i++) { const p = slotPos(i); coin(p.x, p.y); }
+
+    // forming coin at the tap: grows, then falls into its slot
+    if (disp < CAP - 1e-6) {
+      const f = disp - n;
+      const tapY = TAP_Y + COIN_R + 2;
+      if (f < 0.75) coin(BX, tapY, ease(f / 0.75) * 0.95 + 0.05, 0.9);
+      else {
+        const u = easeIn((f - 0.75) / 0.25), p = slotPos(n);
+        coin(lerp(BX, p.x, u), lerp(tapY, p.y, u));
+      }
+    } else {
+      // full: extra drips overflow and are discarded
+      const ph = (t * RATE) % 1;
+      const al = 1 - ph;
+      ctx.globalAlpha = al;
+      coin(lerp(BX, BX + BW / 2 + 40, ph), TAP_Y + 20 + 260 * ph * ph, 0.55);
+      ctx.globalAlpha = 1;
+      text('FULL — extra tokens overflow', BX, BTOP - 18, 14, C.coin, 'center', '700');
+    }
+  }
+
+  function drawRequests(t) {
+    for (const e of events) {
+      const s = e.ta - TRAVEL;
+      if (t < s || t > e.ta + OUT) continue;
+      let x, y, col, label, alpha = 1;
+      if (t <= e.ta) {
+        const u = (t - s) / TRAVEL;
+        x = lerp(CLIENT_X + 60, GATE_X, u); y = LANE_Y;
+        col = C.req; label = 'REQ';
+      } else {
+        const u = (t - e.ta) / OUT;
+        if (e.ok) {
+          x = lerp(GATE_X, SERVER_X - 60, ease(u)); y = LANE_Y;
+          col = C.ok; label = '200';
+          alpha = clamp((1 - u) / 0.15);
+        } else {
+          x = GATE_X + 70 * u; y = LANE_Y + 90 * easeIn(u);
+          col = C.bad; label = '429';
+          alpha = 1 - u;
+          x += Math.sin((t - e.ta) * 60) * 4 * clamp(1 - u * 4);
+        }
+      }
+      ctx.save(); ctx.globalAlpha = clamp(alpha);
+      roundRect(x - 22, y - 14, 44, 28, 7);
+      ctx.fillStyle = col; ctx.fill();
+      text(label, x, y + 1, 13, '#0d1117', 'center', '800');
+      ctx.restore();
+
+      // token dropping from the spout into the gate for accepted requests
+      if (e.ok && t > e.ta - COIN_FALL && t <= e.ta + 0.08) {
+        const u = clamp((t - (e.ta - COIN_FALL)) / COIN_FALL);
+        coin(GATE_X, lerp(BBOT + 10, LANE_Y - 4, easeIn(u)), 0.7, 1 - clamp((t - e.ta) / 0.08));
+      }
+    }
+
+    // gate flash
+    let flash = 0, flashCol = C.line;
+    for (const e of events) {
+      if (t >= e.ta && t < e.ta + 0.6) {
+        const v = Math.exp(-(t - e.ta) * 6);
+        if (v > flash) { flash = v; flashCol = e.ok ? C.ok : C.bad; }
+      }
+    }
+    ctx.strokeStyle = C.line; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(GATE_X, LANE_Y - 34); ctx.lineTo(GATE_X, LANE_Y - 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(GATE_X, LANE_Y + 22); ctx.lineTo(GATE_X, LANE_Y + 34); ctx.stroke();
+    if (flash > 0.02) {
+      ctx.save(); ctx.globalAlpha = flash;
+      ctx.beginPath(); ctx.arc(GATE_X, LANE_Y, 30 + 16 * (1 - flash), 0, Math.PI * 2);
+      ctx.strokeStyle = flashCol; ctx.lineWidth = 3; ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawPanel(t, tok) {
+    let ok = 0, bad = 0;
+    for (const e of events) if (e.ta <= t) e.ok ? ok++ : bad++;
+
+    // left info panel
+    roundRect(60, 150, 300, 230, 14);
+    ctx.fillStyle = C.panel; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.stroke();
+    text('On each request:', 80, 178, 16, C.text, 'left', '700');
+    ctx.font = '15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillStyle = C.dim; ctx.textAlign = 'left';
+    const code = [
+      'tokens = min(b,',
+      '   tokens + r·Δt)',
+      'if tokens ≥ 1:',
+      '   tokens -= 1  → 200',
+      'else:         → 429'
+    ];
+    code.forEach((s, i) => ctx.fillText(s, 84, 208 + i * 22));
+    text('tokens now', 80, 334, 14, C.dim);
+    text(tok.toFixed(2), 80, 358, 26, C.coin, 'left', '800');
+    text(`/ ${CAP}`, 152, 360, 16, C.dim);
+
+    // right counters
+    roundRect(920, 150, 300, 230, 14);
+    ctx.fillStyle = C.panel; ctx.fill(); ctx.strokeStyle = C.line; ctx.stroke();
+    text('Outcomes', 940, 178, 16, C.text, 'left', '700');
+    text('allowed', 940, 222, 15, C.dim);
+    text(String(ok), 1200, 222, 26, C.ok, 'right', '800');
+    text('rejected (429)', 940, 262, 15, C.dim);
+    text(String(bad), 1200, 262, 26, C.bad, 'right', '800');
+    // recent arrival rate vs pass rate (last 3s window)
+    let arr = 0, pass = 0;
+    for (const e of events) if (e.ta <= t && e.ta > t - 3) { arr++; if (e.ok) pass++; }
+    text('last 3 s:', 940, 310, 14, C.dim);
+    text(`${(arr / 3).toFixed(1)} req/s in`, 940, 336, 15, C.req, 'left', '700');
+    text(`${(pass / 3).toFixed(1)} req/s out`, 1080, 336, 15, C.ok, 'left', '700');
+    text(`(limit ≈ ${RATE}/s + burst ${CAP})`, 940, 360, 13, C.dim);
+  }
+
+  function drawGraph(t) {
+    const { x0, x1, y0, y1 } = G;
+    const X = s => lerp(x0, x1, s / D);
+    const Y = v => lerp(y0, y1, v / CAP);
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x0, y0); ctx.lineTo(x1, y0); ctx.stroke();
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(x0, Y(CAP)); ctx.lineTo(x1, Y(CAP)); ctx.stroke();
+    ctx.setLineDash([]);
+    text('tokens', x0 - 10, (y0 + y1) / 2 - 8, 12, C.dim, 'right');
+    text('over time', x0 - 10, (y0 + y1) / 2 + 8, 12, C.dim, 'right');
+    text('b', x0 - 10, Y(CAP), 12, C.dim, 'right');
+    text('0', x0 - 10, y0, 12, C.dim, 'right');
+
+    // curve up to t (sampled; pure)
+    const end = Math.min(t, D);
+    ctx.beginPath();
+    const steps = Math.max(2, Math.ceil(end / D * 640));
+    for (let i = 0; i <= steps; i++) {
+      const s = end * i / steps;
+      const px = X(s), py = Y(tokensAt(s));
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.strokeStyle = C.coin; ctx.lineWidth = 2; ctx.stroke();
+
+    for (const e of events) {
+      if (e.ta > t) break;
+      ctx.fillStyle = e.ok ? C.ok : C.bad;
+      ctx.fillRect(X(e.ta) - 1.5, y0 + 3, 3, 8);
+    }
+    // playhead
+    ctx.strokeStyle = 'rgba(230,237,243,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X(end), y1 - 6); ctx.lineTo(X(end), y0 + 12); ctx.stroke();
+  }
+
+  function renderScene(t) {
+    // displayed tokens exclude coins that are already in flight to the gate
+    let inflight = 0;
+    for (const e of events) if (e.ok && t > e.ta - COIN_FALL && t <= e.ta) inflight++;
+    const tok = tokensAt(t);
+    const disp = clamp(tok - inflight, 0, CAP);
+
+    drawStatic(t);
+    drawPanel(t, tok);
+    drawBucket(t, disp);
+    drawRequests(t);
+    drawGraph(t);
+  }
+
+  // Public: draw the frame for time t (seconds). Pure function of t.
+  function renderFrame(t) {
+    t = ((t % D) + D) % D;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = Math.round(cv.clientWidth * dpr), ch = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, cw, ch);
+    const s = Math.min(cw / W, ch / H);
+    ctx.setTransform(s, 0, 0, s, (cw - W * s) / 2, (ch - H * s) / 2);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    renderScene(t);
+    // fade at loop boundary
+    const fade = 1 - clamp(t / 0.4) * clamp((D - t) / 0.4);
+    if (fade > 0) { ctx.fillStyle = `rgba(13,17,23,${fade})`; ctx.fillRect(0, 0, W, H); }
+    ctx.restore();
+  }
+
+  window.renderFrame = renderFrame;
+  window.DURATION = D;
+
+  const q = new URLSearchParams(location.search).get('t');
+  if (q !== null && isFinite(parseFloat(q))) {
+    const tq = parseFloat(q);
+    renderFrame(tq);
+    window.addEventListener('resize', () => renderFrame(tq));
+  } else {
+    let t0 = null;
+    const loop = now => {
+      if (t0 === null) t0 = now;
+      renderFrame((now - t0) / 1000);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>

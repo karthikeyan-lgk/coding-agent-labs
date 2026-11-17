@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token bucket rate limiter</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1117; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+/*
+  Token bucket explainer. Every frame is a pure function of time.
+
+  Renderer hooks:
+    index.html?t=12.5        open frozen at t = 12.5 s
+    window.renderAt(sec)     freeze and draw the frame for that time (synchronous)
+    window.play()            resume playback
+    window.DURATION          loop length in seconds
+  Keys: space = pause/play, left/right = step 0.25 s. Drag the timeline to scrub.
+*/
+
+// ---------- parameters and the (deterministic) story ----------
+const D = 36, CAP = 6, RATE = 2;
+
+const reqT = [7.5, 8.7, 9.7, 10.9];                               // light traffic
+for (let i = 0; i < 10; i++) reqT.push(13.02 + i * 0.09);          // burst of 10
+for (let k = 0; k < 39; k++) reqT.push(14.35 + k * 0.25);          // sustained 4/s
+for (let i = 0; i < 4; i++) reqT.push(27.6 + i * 0.09);            // small burst
+
+const EV = [];
+for (let k = 1; k / RATE < D; k++) EV.push({ T: k / RATE, kind: 'tick' });
+for (const T of reqT) EV.push({ T: Math.round(T * 1e6) / 1e6, kind: 'req' });
+EV.sort((a, b) => a.T - b.T);
+{
+  let lv = 0;
+  for (const e of EV) {
+    if (e.kind === 'tick') { e.ok = lv < CAP; e.slot = lv; if (e.ok) lv++; }
+    else { e.ok = lv >= 1; if (e.ok) { lv--; e.slot = lv; } }
+    e.lv = lv;
+  }
+}
+const TICKS = EV.filter(e => e.kind === 'tick');
+const REQS = EV.filter(e => e.kind === 'req');
+const tAdd = TICKS.filter(e => e.ok).map(e => e.T);
+const tSpill = TICKS.filter(e => !e.ok).map(e => e.T);
+const tOk = REQS.filter(e => e.ok).map(e => e.T);
+const tNo = REQS.filter(e => !e.ok).map(e => e.T);
+const tReq = REQS.map(e => e.T);
+
+function levelAt(t) { let lv = 0; for (const e of EV) { if (e.T > t) break; lv = e.lv; } return lv; }
+function lastIn(arr, t) { let r = -1e9; for (const T of arr) { if (T > t) break; r = T; } return r; }
+function countIn(arr, a, b) { let n = 0; for (const T of arr) { if (T > b) break; if (T > a) n++; } return n; }
+function flash(arr, t, dur) { return Math.max(0, 1 - (t - lastIn(arr, t)) / dur); }
+
+const CAPTIONS = [
+  [0,    'Tokens drip into a bucket at a steady rate. Here, 2 per second.'],
+  [3.2,  'The bucket holds 6 at most. Once it is full, extra tokens are discarded.'],
+  [6.5,  'Each request spends one token to get through.'],
+  [11.8, 'Saved-up tokens let a burst through at once, up to the bucket’s size.'],
+  [14.5, 'Bucket empty? The request is rejected: 429 Too Many Requests.'],
+  [19.2, 'Under sustained load, requests pass only as fast as tokens arrive.'],
+  [24.5, 'When traffic eases, the bucket refills, ready for the next burst.'],
+  [29.5, 'Two knobs: capacity sets the burst size, refill rate sets the long-run limit.'],
+];
+const PHASES = [[0, 'fill'], [6.5, 'light traffic'], [12, 'burst'], [14.2, 'overload'], [24.5, 'recovery'], [29.5, 'recap']];
+
+// ---------- helpers ----------
+const BG = '#0d1117', TEXT = '#e9edf2', MUTED = '#8b97a8', LINE = '#2a3442';
+const GOLD = '#f5b83d', GREEN = '#46c88a', RED = '#f0616d', BLUE = '#6aa7ff';
+const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';
+
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const smooth = (a, b, x) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+
+function rr(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+function txt(g, s, x, y, font, color, align, alpha) {
+  if (alpha !== undefined && alpha <= 0) return;
+  g.save();
+  if (alpha !== undefined) g.globalAlpha *= alpha;
+  g.font = font; g.fillStyle = color; g.textAlign = align || 'left'; g.textBaseline = 'alphabetic';
+  g.fillText(s, x, y);
+  g.restore();
+}
+function wrap(g, s, maxW) {
+  const words = s.split(' '), lines = []; let cur = '';
+  for (const w of words) {
+    const tryLine = cur ? cur + ' ' + w : w;
+    if (cur && g.measureText(tryLine).width > maxW) { lines.push(cur); cur = w; } else cur = tryLine;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// ---------- scene (authored in an 820 x 370 box) ----------
+const GX = 360, LY = 290, V = 325, X0 = 8, SX = 736;
+const CW = 50, CH = 16, PITCH = 23;
+const slotY = i => 218 - i * PITCH;
+const T_IN = (GX - X0) / V, T_OUT = (SX - GX) / V, FALL = 0.45;
+
+function coin(g, cx, cy, s, a, rot) {
+  if (a <= 0) return;
+  g.save();
+  g.globalAlpha *= a;
+  g.translate(cx, cy); if (rot) g.rotate(rot); g.scale(s, s);
+  rr(g, -CW / 2, -CH / 2, CW, CH, CH / 2);
+  g.fillStyle = GOLD; g.fill();
+  g.lineWidth = 1.5; g.strokeStyle = '#a8740f'; g.stroke();
+  rr(g, -CW / 2 + 7, -CH / 2 + 3, CW - 14, 3, 1.5);
+  g.fillStyle = 'rgba(255,255,255,.45)'; g.fill();
+  g.restore();
+}
+
+function reqBox(g, x, y, a, okMix, noMix, rot, s) {
+  if (a <= 0) return;
+  g.save();
+  g.globalAlpha *= a;
+  g.translate(x, y); if (rot) g.rotate(rot); if (s) g.scale(s, s);
+  rr(g, -11, -11, 22, 22, 5);
+  g.fillStyle = BLUE; g.fill();
+  if (okMix > 0) { g.globalAlpha *= okMix; g.fillStyle = GREEN; g.fill(); g.globalAlpha /= okMix; }
+  if (noMix > 0) {
+    g.save(); g.globalAlpha *= noMix; g.fillStyle = RED; g.fill();
+    g.strokeStyle = '#fff'; g.lineWidth = 2.2; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-4.5, -4.5); g.lineTo(4.5, 4.5); g.moveTo(4.5, -4.5); g.lineTo(-4.5, 4.5); g.stroke();
+    g.restore();
+  }
+  g.restore();
+}
+
+function drawScene(g, t) {
+  const lv = levelAt(t);
+  const emph = smooth(29.5, 30.4, t);
+
+  // lane
+  rr(g, 0, LY - 17, SX, 34, 6); g.fillStyle = 'rgba(255,255,255,.04)'; g.fill();
+  txt(g, 'requests', 4, LY - 28, '500 15px ' + SANS, MUTED);
+
+  // service
+  const sf = flash(tOk, t - T_OUT, 0.4);
+  rr(g, SX, LY - 34, 76, 68, 9); g.fillStyle = '#141b25'; g.fill();
+  g.lineWidth = 2; g.strokeStyle = '#3a4656'; g.stroke();
+  if (sf > 0) { g.save(); g.globalAlpha = sf; g.strokeStyle = GREEN; g.stroke(); g.restore(); }
+  txt(g, 'service', SX + 38, LY + 5, '500 15px ' + SANS, MUTED, 'center');
+  txt(g, 'service', SX + 38, LY + 5, '500 15px ' + SANS, GREEN, 'center', sf);
+
+  // link from bucket to gate
+  g.save(); g.setLineDash([3, 5]); g.strokeStyle = '#3a4656'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(GX, 240); g.lineTo(GX, LY - 20); g.stroke(); g.restore();
+
+  // gate
+  const fo = flash(tOk, t, 0.35), fn = flash(tNo, t, 0.5);
+  const bx = GX + 15;
+  g.save(); g.lineCap = 'round'; g.lineWidth = 4;
+  g.globalAlpha = 1 - 0.8 * fo; g.strokeStyle = '#6b7889';
+  g.beginPath(); g.moveTo(bx, LY - 20); g.lineTo(bx, LY + 20); g.stroke();
+  if (fn > 0) { g.globalAlpha = fn; g.strokeStyle = RED; g.lineWidth = 5; g.stroke(); }
+  g.restore();
+  for (const yy of [LY - 23, LY + 23]) {
+    g.beginPath(); g.arc(bx, yy, 4.5, 0, 7); g.fillStyle = '#6b7889'; g.fill();
+    if (fo > 0) { g.save(); g.globalAlpha = fo; g.fillStyle = GREEN; g.fill(); g.restore(); }
+    if (fn > 0) { g.save(); g.globalAlpha = fn; g.fillStyle = RED; g.fill(); g.restore(); }
+  }
+  txt(g, '429 rejected', GX + 30, LY + 46, '700 16px ' + SANS, RED, 'left', flash(tNo, t, 1.1));
+
+  // requests
+  for (const e of REQS) {
+    const d = t - e.T;
+    if (d < -T_IN) continue;
+    if (d < 0) {
+      reqBox(g, GX + V * d, LY, smooth(-T_IN, -T_IN + 0.12, d), 0, 0);
+    } else if (e.ok) {
+      const x = GX + V * d;
+      if (x > SX + 6) continue;
+      reqBox(g, x, LY, 1 - smooth(SX - 26, SX + 6, x), smooth(0, 0.15, d), 0);
+    } else {
+      if (d > 0.55) continue;
+      reqBox(g, GX - 40 * d, LY + 20 * d + 130 * d * d, 1 - smooth(0.25, 0.55, d), 0, smooth(0, 0.08, d), -1.6 * d, 1 - 0.3 * d);
+    }
+  }
+
+  // bucket
+  g.save();
+  g.beginPath();
+  g.moveTo(GX - 36, 88); g.lineTo(GX - 36, 224);
+  g.arcTo(GX - 36, 234, GX - 26, 234, 10); g.lineTo(GX + 26, 234);
+  g.arcTo(GX + 36, 234, GX + 36, 224, 10); g.lineTo(GX + 36, 88);
+  g.fillStyle = 'rgba(255,255,255,.03)'; g.fill();
+  g.lineWidth = 3; g.lineCap = 'round'; g.strokeStyle = '#6b7889'; g.stroke();
+  g.restore();
+  for (let i = lv; i < CAP; i++) {
+    rr(g, GX - CW / 2, slotY(i) - CH / 2, CW, CH, CH / 2);
+    g.save(); g.setLineDash([3, 4]); g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke(); g.restore();
+  }
+  for (let i = 0; i < lv; i++) coin(g, GX, slotY(i), 1, 1);
+  // landing flash on the newest coin
+  {
+    let last = null;
+    for (const e of TICKS) { if (e.T > t) break; if (e.ok) last = e; }
+    if (last && last.slot < lv && t - last.T < 0.3) {
+      g.save(); g.globalAlpha = 0.7 * (1 - (t - last.T) / 0.3);
+      rr(g, GX - CW / 2, slotY(last.slot) - CH / 2, CW, CH, CH / 2); g.fillStyle = '#fff'; g.fill(); g.restore();
+    }
+  }
+
+  // faucet
+  g.fillStyle = '#3a4656';
+  g.fillRect(GX - 9, 0, 18, 28);
+  rr(g, GX - 31, 26, 62, 12, 4); g.fill();
+
+  // tokens in flight: falling in, or spilling off a full bucket
+  for (const e of TICKS) {
+    const d = t - e.T;
+    if (d < -FALL) break;
+    if (d < 0) {
+      const p = (d + FALL) / FALL;
+      coin(g, GX, lerp(48, slotY(e.slot), p * p), 1, smooth(0, 0.15, p));
+    } else if (!e.ok && d < 0.6) {
+      const p = d / 0.6;
+      coin(g, GX + 66 * p, slotY(CAP) - 34 * p + 150 * p * p, 1, 1 - smooth(0.4, 0.95, p), 1.5 * p);
+    }
+  }
+
+  // labels
+  const lf = '500 16px ' + SANS, bf = '600 16px ' + SANS;
+  txt(g, 'refill  2 tokens / s', GX - 44, 24, lf, MUTED, 'right');
+  txt(g, 'refill  2 tokens / s', GX - 44, 24, lf, TEXT, 'right', emph);
+  txt(g, '= long-run limit', GX - 44, 47, bf, GOLD, 'right', emph);
+
+  g.strokeStyle = '#4a5667'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(GX - 46, 95); g.lineTo(GX - 52, 95); g.lineTo(GX - 52, 226); g.lineTo(GX - 46, 226); g.stroke();
+  txt(g, 'capacity  6', GX - 64, 160, lf, MUTED, 'right');
+  txt(g, 'capacity  6', GX - 64, 160, lf, TEXT, 'right', emph);
+  txt(g, '= biggest burst', GX - 64, 183, bf, GOLD, 'right', emph);
+
+  txt(g, String(lv), GX + 104, 168, '700 46px ' + SANS, lv === 0 ? RED : GOLD);
+  txt(g, lv === 0 ? 'tokens · empty' : lv === CAP ? 'tokens · full' : 'tokens', GX + 106, 192, '500 15px ' + SANS, MUTED);
+
+  // token being spent
+  for (const e of REQS) {
+    const d = t - e.T;
+    if (d < 0) break;
+    if (!e.ok || d >= 0.26) continue;
+    const p = d / 0.26, k = p * p;
+    coin(g, lerp(GX, GX + V * d, k), lerp(slotY(e.slot), LY, k), lerp(1, 0.4, k), 1 - smooth(0.75, 1, p));
+  }
+}
+
+// ---------- header ----------
+function drawHeader(g, r, t) {
+  g.save();
+  if ('letterSpacing' in g) g.letterSpacing = '2px';
+  txt(g, 'TOKEN BUCKET RATE LIMITER', r.x, r.y + 46, '600 14px ' + SANS, MUTED);
+  g.restore();
+
+  let idx = 0;
+  for (let i = 0; i < CAPTIONS.length; i++) if (t >= CAPTIONS[i][0]) idx = i;
+  for (let i = 0; i < CAPTIONS.length; i++) {
+    g.beginPath(); g.arc(r.x + r.w - 6 - (CAPTIONS.length - 1 - i) * 16, r.y + 41, i === idx ? 4.5 : 3, 0, 7);
+    g.fillStyle = i === idx ? GOLD : i < idx ? '#5b6778' : '#2f3947'; g.fill();
+  }
+
+  const a = CAPTIONS[idx][0], b = idx + 1 < CAPTIONS.length ? CAPTIONS[idx + 1][0] : D;
+  const fin = idx === 0 ? 1 : smooth(a, a + 0.4, t);
+  const fout = idx === CAPTIONS.length - 1 ? 1 - smooth(D - 1.1, D - 0.6, t) : 1 - smooth(b - 0.3, b, t);
+  g.save();
+  g.font = '600 32px ' + SANS;
+  const lines = wrap(g, CAPTIONS[idx][1], r.w);
+  g.globalAlpha = fin * fout; g.fillStyle = TEXT; g.textBaseline = 'alphabetic';
+  lines.forEach((ln, i) => g.fillText(ln, r.x, r.y + 96 + i * 42 + (1 - fin) * 10));
+  g.restore();
+}
+
+// ---------- side panel: live rates + the algorithm ----------
+const CODE = [
+  ['every 1/rate seconds:', 'h'],
+  ['  if tokens < capacity:', 'add', 'spill'],
+  ['    tokens += 1', 'add'],
+  ['', ''],
+  ['on request:', 'h'],
+  ['  if tokens >= 1:', 'ok'],
+  ['    tokens -= 1', 'ok'],
+  ['    allow', 'ok'],
+  ['  else:', 'no'],
+  ['    reject   # 429', 'no'],
+];
+
+function drawPanel(g, r, t) {
+  rr(g, r.x, r.y, r.w, r.h, 12); g.fillStyle = '#121821'; g.fill();
+  g.lineWidth = 1; g.strokeStyle = LINE; g.stroke();
+  const two = r.w > 560, pad = 20;
+  const sx = r.x + pad, sw = two ? 230 : r.w - pad * 2;
+
+  g.save(); if ('letterSpacing' in g) g.letterSpacing = '1.5px';
+  txt(g, 'LAST 2 SECONDS', sx, r.y + 31, '600 13px ' + SANS, MUTED);
+  g.restore();
+  const rows = [['arriving', BLUE, tReq], ['allowed', GREEN, tOk], ['rejected', RED, tNo]];
+  rows.forEach((row, i) => {
+    const y = r.y + 60 + i * 27;
+    rr(g, sx, y - 11, 11, 11, 3); g.fillStyle = row[1]; g.fill();
+    txt(g, row[0], sx + 20, y, '500 16px ' + SANS, TEXT);
+    txt(g, (countIn(row[2], t - 2, t) / 2).toFixed(1) + ' /s', sx + sw, y, '600 16px ' + MONO, row[1], 'right');
+  });
+
+  let cx, cy, pitch, cw;
+  if (two) { cx = r.x + 300; cy = r.y + 44; pitch = 24; cw = r.x + r.w - 14 - cx; g.fillStyle = LINE; g.fillRect(r.x + 272, r.y + 18, 1, r.h - 36); }
+  else { cx = sx; cy = r.y + 158; pitch = 20.5; cw = sw; g.fillStyle = LINE; g.fillRect(sx, r.y + 130, sw, 1); }
+
+  const f = { add: flash(tAdd, t, 0.45), spill: flash(tSpill, t, 0.45), ok: flash(tOk, t, 0.45), no: flash(tNo, t, 0.6) };
+  const col = { add: GOLD, spill: '#9aa6b6', ok: GREEN, no: RED };
+  CODE.forEach((ln, i) => {
+    const y = cy + i * pitch;
+    let k = 0, c = null;
+    for (let j = 1; j < ln.length; j++) if (f[ln[j]] > k) { k = f[ln[j]]; c = col[ln[j]]; }
+    if (k > 0) {
+      g.save(); g.globalAlpha = 0.24 * k; g.fillStyle = c; rr(g, cx - 8, y - 15, cw + 12, pitch, 4); g.fill();
+      g.globalAlpha = k; g.fillRect(cx - 8, y - 15, 3, pitch); g.restore();
+    }
+    const hash = ln[0].indexOf('#');
+    const code = hash < 0 ? ln[0] : ln[0].slice(0, hash);
+    const font = (ln[1] === 'h' ? '600 ' : '500 ') + '15px ' + MONO;
+    txt(g, code, cx, y, font, ln[1] === 'h' ? TEXT : '#b9c4d2');
+    if (k > 0) txt(g, code, cx, y, font, '#fff', 'left', k);
+    if (hash >= 0) { g.font = font; txt(g, ln[0].slice(hash), cx + g.measureText(code).width, y, font, '#66738a'); }
+  });
+}
+
+// ---------- timeline ----------
+let HIT = null;
+function drawChart(g, r, t) {
+  const px = r.x + 34, pw = r.w - 46, py = r.y + 30, ph = r.h - 82;
+  const X = T => px + pw * T / D, Y = v => py + ph * (1 - v / CAP);
+  HIT = { x: px, w: pw, y: r.y, h: r.h };
+
+  txt(g, 'tokens in bucket', r.x, r.y + 15, '500 14px ' + SANS, MUTED);
+  let lx = r.x + r.w;
+  for (const [name, c] of [['rejected', RED], ['allowed', GREEN]]) {
+    g.font = '500 14px ' + SANS; const w = g.measureText(name).width;
+    txt(g, name, lx, r.y + 15, '500 14px ' + SANS, MUTED, 'right');
+    g.fillStyle = c; g.fillRect(lx - w - 9, r.y + 4, 3, 12);
+    lx -= w + 30;
+  }
+
+  // phases
+  PHASES.forEach((p, i) => {
+    const a = p[0], b = i + 1 < PHASES.length ? PHASES[i + 1][0] : D;
+    const on = t >= a && t < b;
+    if (i) { g.fillStyle = LINE; g.fillRect(X(a), py - 4, 1, ph + 24); }
+    txt(g, p[1], (X(a) + X(b)) / 2, py + ph + 44, (on ? '600 ' : '500 ') + '13px ' + SANS, on ? TEXT : '#5f6c7e', 'center');
+  });
+
+  // axes
+  g.fillStyle = LINE;
+  g.fillRect(px, Y(0), pw, 1); g.fillRect(px, Y(CAP), pw, 1);
+  g.fillStyle = 'rgba(42,52,66,.5)'; g.fillRect(px, Y(CAP / 2), pw, 1);
+  txt(g, String(CAP), px - 9, Y(CAP) + 5, '500 13px ' + SANS, MUTED, 'right');
+  txt(g, '0', px - 9, Y(0) + 5, '500 13px ' + SANS, MUTED, 'right');
+
+  // level so far
+  let lv = 0;
+  g.beginPath(); g.moveTo(X(0), Y(0));
+  for (const e of EV) {
+    if (e.T > t) break;
+    if (e.lv !== lv) { g.lineTo(X(e.T), Y(lv)); g.lineTo(X(e.T), Y(e.lv)); lv = e.lv; }
+  }
+  g.lineTo(X(t), Y(lv));
+  g.save(); g.lineJoin = 'round'; g.lineWidth = 2; g.strokeStyle = GOLD; g.stroke();
+  g.lineTo(X(t), Y(0)); g.lineTo(X(0), Y(0)); g.closePath();
+  g.fillStyle = 'rgba(245,184,61,.13)'; g.fill(); g.restore();
+
+  // request marks
+  for (const e of REQS) {
+    if (e.T > t) break;
+    g.fillStyle = e.ok ? GREEN : RED;
+    g.fillRect(X(e.T) - 0.9, py + ph + 8, 1.8, 11);
+  }
+
+  // playhead
+  g.fillStyle = 'rgba(255,255,255,.45)'; g.fillRect(X(t) - 0.5, py - 6, 1, ph + 28);
+  g.beginPath(); g.arc(X(t), Y(lv), 4.5, 0, 7); g.fillStyle = GOLD; g.fill();
+  g.lineWidth = 2; g.strokeStyle = BG; g.stroke();
+}
+
+// ---------- frame = f(t) ----------
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+const off = document.createElement('canvas'), octx = off.getContext('2d');
+let L, dpr = 1, sc = 1, ox = 0, oy = 0;
+
+function layout(w, h) {
+  if (w / h >= 0.85) return {
+    W: 1280, H: 720,
+    header: { x: 48, y: 0, w: 1184 }, scene: { x: 48, y: 150, s: 1 },
+    panel: { x: 900, y: 156, w: 332, h: 352 }, chart: { x: 48, y: 530, w: 1184, h: 172 },
+  };
+  return {
+    W: 720, H: 1280,
+    header: { x: 32, y: 6, w: 656 }, scene: { x: 20, y: 250, s: 680 / 820 },
+    panel: { x: 20, y: 610, w: 680, h: 290 }, chart: { x: 20, y: 936, w: 680, h: 320 },
+  };
+}
+function resize() {
+  const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width = off.width = Math.round(w * dpr);
+  canvas.height = off.height = Math.round(h * dpr);
+  L = layout(w, h);
+  sc = Math.min(w / L.W, h / L.H);
+  ox = (w - L.W * sc) / 2; oy = (h - L.H * sc) / 2;
+}
+function frame(g, t) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.fillStyle = BG; g.fillRect(0, 0, g.canvas.width, g.canvas.height);
+  g.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
+  drawHeader(g, L.header, t);
+  g.save(); g.translate(L.scene.x, L.scene.y); g.scale(L.scene.s, L.scene.s); drawScene(g, t); g.restore();
+  drawPanel(g, L.panel, t);
+  drawChart(g, L.chart, t);
+}
+function render(time) {
+  const t = ((time % D) + D) % D;
+  frame(ctx, t);
+  const k = smooth(D - 0.6, D, t);          // seamless loop: dissolve into frame 0
+  if (k > 0) {
+    frame(octx, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = k; ctx.drawImage(off, 0, 0); ctx.globalAlpha = 1;
+  }
+}
+
+// ---------- clock ----------
+const q = new URLSearchParams(location.search);
+let paused = q.has('t'), tPause = paused ? (parseFloat(q.get('t')) || 0) : 0, wall0 = performance.now();
+const now = () => paused ? tPause : (performance.now() - wall0) / 1000;
+const seek = s => { tPause = s; wall0 = performance.now() - s * 1000; };
+
+window.DURATION = D;
+window.renderAt = s => { paused = true; seek(+s || 0); render(tPause); };
+window.play = () => { seek(now()); paused = false; };
+
+addEventListener('resize', () => { resize(); render(now()); });
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); if (paused) window.play(); else { tPause = now(); paused = true; } }
+  else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') { const s = now() + (e.code === 'ArrowRight' ? 0.25 : -0.25); paused = true; seek(s); }
+});
+let drag = false, wasPaused = false;
+const scrubTo = e => seek(clamp(((e.clientX - ox) / sc - HIT.x) / HIT.w, 0, 0.999) * D);
+canvas.addEventListener('pointerdown', e => {
+  const x = (e.clientX - ox) / sc, y = (e.clientY - oy) / sc;
+  if (!HIT || x < HIT.x - 10 || x > HIT.x + HIT.w + 10 || y < HIT.y || y > HIT.y + HIT.h) return;
+  drag = true; wasPaused = paused; paused = true; canvas.setPointerCapture(e.pointerId); scrubTo(e);
+});
+canvas.addEventListener('pointermove', e => { if (drag) scrubTo(e); });
+const endDrag = () => { if (drag) { drag = false; if (!wasPaused) window.play(); } };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+resize();
+(function loop() { render(now()); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

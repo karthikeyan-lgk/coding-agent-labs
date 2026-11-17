@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observability Labs — 30s Explainer</title>
+<style>
+  :root{
+    --bg:#0b0f14; --orange:#e8743b; --cyan:#3ec7d4; --text:#e6edf3;
+    --muted:rgba(230,237,243,.55); --line:rgba(230,237,243,.08);
+    --ease:cubic-bezier(.2,.85,.2,1); --ease-in:cubic-bezier(.7,0,.84,0);
+    --sans:"Inter","SF Pro Display","Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;background:var(--bg);overflow:hidden;cursor:pointer}
+  body{display:flex;align-items:center;justify-content:center;font-family:var(--sans);color:var(--text);-webkit-font-smoothing:antialiased}
+
+  /* ---------- 1920x1080 stage, scaled to fit ---------- */
+  #stage{position:relative;width:1920px;height:1080px;flex:none;overflow:hidden;background:var(--bg);transform-origin:center center}
+
+  /* ambient background */
+  .grid{position:absolute;inset:-80px;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:80px 80px;animation:gridDrift 30s linear infinite;mask-image:radial-gradient(ellipse at center,#000 30%,transparent 80%)}
+  @keyframes gridDrift{to{transform:translate(80px,80px)}}
+  .glow{position:absolute;border-radius:50%;filter:blur(120px);opacity:.22;pointer-events:none;transition:transform 2.4s var(--ease),opacity 2.4s var(--ease)}
+  .glow.o{width:900px;height:900px;background:var(--orange);left:-300px;top:-300px}
+  .glow.c{width:900px;height:900px;background:var(--cyan);right:-300px;bottom:-350px}
+  .vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.55));pointer-events:none}
+
+  /* ---------- scenes ---------- */
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 160px;opacity:0;visibility:hidden;transform:scale(1.04);transition:opacity .7s var(--ease),transform 6s linear,filter .7s var(--ease)}
+  .scene.active{opacity:1;visibility:visible;transform:scale(1)}
+  .scene.exit{opacity:0;transform:scale(1.08);filter:blur(14px);transition:opacity .6s var(--ease-in),transform .6s var(--ease-in),filter .6s var(--ease-in)}
+
+  /* staggered element entrances, delay via --d */
+  .a{opacity:0;transform:translateY(60px);transition:opacity .8s var(--ease) var(--d,0s),transform .9s var(--ease) var(--d,0s)}
+  .a.l{transform:translateX(-80px)}
+  .a.s{transform:scale(.8)}
+  .scene.active .a{opacity:1;transform:none}
+  .scene:not(.active) .a,.scene:not(.active) .a *{transition:none!important}
+
+  .tag{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:.32em;color:var(--cyan);text-transform:uppercase;margin-bottom:36px;display:flex;align-items:center;gap:18px}
+  .tag::before{content:"";width:48px;height:4px;background:var(--orange);display:block}
+  .h{font-weight:900;font-size:132px;line-height:.98;letter-spacing:-.04em}
+  .h.m{font-size:104px}
+  .o{color:var(--orange)} .c{color:var(--cyan)}
+  .mono{font-family:var(--mono)}
+
+  /* word mask reveal */
+  .mask{display:block;overflow:hidden;padding-bottom:.08em}
+  .mask>span{display:inline-block;transform:translateY(110%);transition:transform 1s var(--ease) var(--d,0s)}
+  .scene.active .mask>span{transform:none}
+
+  /* ---------- Scene 1: problem ---------- */
+  .term{font-family:var(--mono);font-size:34px;color:var(--muted);margin-bottom:48px;display:flex;gap:16px;align-items:center}
+  .term .ok{color:#5fd38d}
+  .type{display:inline-block;overflow:hidden;white-space:nowrap;width:0;border-right:3px solid var(--cyan)}
+  .scene.active .type{animation:type 1s steps(22) .5s forwards,caret .7s step-end infinite}
+  @keyframes type{to{width:22ch}}
+  @keyframes caret{50%{border-color:transparent}}
+  .chips{display:flex;gap:32px;margin-top:72px}
+  .chip{border:2px solid rgba(232,116,59,.45);background:rgba(232,116,59,.07);border-radius:18px;padding:26px 40px;min-width:330px}
+  .chip small{display:block;font-family:var(--mono);font-size:22px;letter-spacing:.25em;color:var(--muted);margin-bottom:10px}
+  .chip b{font-family:var(--mono);font-size:64px;font-weight:800;color:var(--orange)}
+  .scene.active .chip{animation:shake .5s 3.6s 2}
+  @keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+  /* ---------- Scene 2: what we do ---------- */
+  .readout{display:flex;gap:40px;margin-top:80px}
+  .meter{flex:1;border-top:4px solid var(--cyan);padding-top:28px;position:relative}
+  .meter:nth-child(2){border-color:var(--orange)}
+  .meter small{font-family:var(--mono);font-size:24px;letter-spacing:.25em;color:var(--muted);display:flex;align-items:center;gap:12px}
+  .meter small i{width:12px;height:12px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 12px #ff4d4d;animation:rec 1s step-end infinite}
+  @keyframes rec{50%{opacity:.2}}
+  .meter b{display:block;font-family:var(--mono);font-size:96px;font-weight:800;letter-spacing:-.03em;margin-top:8px;font-variant-numeric:tabular-nums}
+
+  /* ---------- Scene 3: how it works ---------- */
+  .steps{display:flex;gap:44px;margin-top:70px;position:relative}
+  .track{position:absolute;left:0;right:0;top:-34px;height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+  .track i{position:absolute;inset:0;background:linear-gradient(90deg,var(--orange),var(--cyan));transform:scaleX(0);transform-origin:left}
+  .scene.active .track i{transform:scaleX(1);transition:transform 5.6s linear .8s}
+  .step{flex:1;background:rgba(230,237,243,.03);border:2px solid var(--line);border-radius:28px;padding:44px 44px 48px;height:470px;display:flex;flex-direction:column;transition-property:opacity,transform,border-color,background;}
+  .scene.active .step{border-color:rgba(62,199,212,.35)}
+  .num{font-family:var(--mono);font-size:30px;font-weight:800;color:var(--orange);letter-spacing:.1em}
+  .step h3{font-size:68px;font-weight:900;letter-spacing:-.03em;margin:10px 0 8px}
+  .step p{font-size:30px;color:var(--muted);line-height:1.3;font-weight:500}
+  .viz{margin-top:auto;height:130px;border-radius:16px;background:rgba(0,0,0,.35);border:1px solid var(--line);padding:20px 24px;font-family:var(--mono);font-size:24px;overflow:hidden}
+  .viz .p{color:var(--cyan)}
+  .bars3{display:flex;flex-direction:column;gap:14px;justify-content:center}
+  .bars3 div{height:16px;border-radius:8px;background:var(--line);overflow:hidden}
+  .bars3 div i{display:block;height:100%;width:0;border-radius:8px;background:var(--cyan)}
+  .bars3 div:nth-child(2) i{background:var(--orange)}
+  .scene.active .bars3 i{transition:width 1.4s var(--ease)}
+  .scene.active .bars3 div:nth-child(1) i{width:82%;transition-delay:3.1s}
+  .scene.active .bars3 div:nth-child(2) i{width:56%;transition-delay:3.3s}
+  .scene.active .bars3 div:nth-child(3) i{width:70%;transition-delay:3.5s}
+  .yt{display:flex;align-items:center;gap:22px}
+  .yt .thumb{width:150px;height:88px;border-radius:12px;background:linear-gradient(135deg,var(--orange),#a8461b);display:grid;place-items:center;flex:none}
+  .yt .thumb::after{content:"";border-left:28px solid #fff;border-top:17px solid transparent;border-bottom:17px solid transparent;margin-left:6px}
+  .yt .lines div{height:14px;border-radius:7px;background:rgba(230,237,243,.18);margin:10px 0;width:220px}
+  .yt .lines div:nth-child(2){width:160px;background:rgba(62,199,212,.5)}
+
+  /* ---------- Scene 4: proof ---------- */
+  .proof{display:grid;grid-template-columns:1fr 520px;gap:90px;align-items:center}
+  .rows{margin-top:64px;display:flex;flex-direction:column;gap:40px}
+  .row{display:grid;grid-template-columns:230px 1fr;align-items:center;gap:30px}
+  .row span{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--muted)}
+  .bar{height:84px;border-radius:14px;background:var(--line);position:relative;overflow:hidden}
+  .bar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:14px;display:flex;align-items:center;justify-content:flex-end;padding-right:24px;font-style:normal;font-family:var(--mono);font-size:32px;font-weight:800;color:var(--bg);white-space:nowrap}
+  .bar.a1 i{background:var(--orange)} .bar.b1 i{background:var(--cyan)}
+  .scene.active .bar i{transition:width 1.8s var(--ease)}
+  .scene.active .bar.a1 i{width:100%;transition-delay:1.1s}
+  .scene.active .bar.b1 i{width:32.3%;transition-delay:1.3s}
+  .big{text-align:center}
+  .big b{display:block;font-size:260px;font-weight:900;letter-spacing:-.06em;line-height:.9;color:var(--orange);font-variant-numeric:tabular-nums}
+  .big p{font-size:40px;font-weight:800;line-height:1.15;margin-top:18px}
+  .foot{font-family:var(--mono);font-size:22px;color:var(--muted);letter-spacing:.15em;margin-top:56px}
+
+  /* ---------- Scene 5: name ---------- */
+  #s5{align-items:center;text-align:center}
+  .logo{width:220px;height:220px;margin-bottom:54px}
+  .logo rect{stroke:var(--cyan);stroke-width:8;fill:rgba(62,199,212,.06);stroke-dasharray:760;stroke-dashoffset:760}
+  .logo polyline{stroke:var(--orange);stroke-width:10;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:320;stroke-dashoffset:320}
+  .scene.active .logo rect{animation:draw 1.1s var(--ease) .2s forwards}
+  .scene.active .logo polyline{animation:draw 1s var(--ease) .8s forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .name{font-size:156px;font-weight:900;letter-spacing:-.05em;line-height:1}
+  .tagline{font-size:44px;font-weight:600;color:var(--muted);margin-top:30px}
+  .tagline b{color:var(--text)}
+  .cta{margin-top:60px;display:inline-flex;align-items:center;gap:20px;padding:24px 46px;border-radius:999px;background:var(--orange);color:var(--bg);font-size:36px;font-weight:900;letter-spacing:-.01em}
+  .cta::before{content:"";border-left:24px solid var(--bg);border-top:15px solid transparent;border-bottom:15px solid transparent}
+  .scene.active .cta{animation:pulse 1.6s ease-in-out 3s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 18px rgba(232,116,59,0)}0%{box-shadow:0 0 0 0 rgba(232,116,59,.55)}}
+
+  /* ---------- transition wipe ---------- */
+  .wipe{position:absolute;inset:0;pointer-events:none;z-index:20}
+  .wipe i{position:absolute;top:-10%;bottom:-10%;width:60%;left:0;transform:translateX(-120%) skewX(-12deg)}
+  .wipe i:nth-child(1){background:var(--orange)}
+  .wipe i:nth-child(2){background:var(--cyan);width:40%}
+  .wipe i:nth-child(3){background:var(--bg);width:70%}
+  .wipe.go i{animation:sweep 1s cubic-bezier(.77,0,.18,1) forwards}
+  .wipe.go i:nth-child(2){animation-delay:.06s}
+  .wipe.go i:nth-child(3){animation-delay:.12s}
+  @keyframes sweep{to{transform:translateX(280%) skewX(-12deg)}}
+
+  /* ---------- HUD ---------- */
+  .hud{position:absolute;left:160px;right:160px;bottom:56px;display:flex;align-items:center;gap:28px;z-index:30;font-family:var(--mono);font-size:20px;color:var(--muted);letter-spacing:.2em}
+  .prog{flex:1;height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+  .prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--orange),var(--cyan))}
+  .brandmark{position:absolute;top:56px;left:160px;z-index:30;font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:.25em;color:var(--muted);display:flex;align-items:center;gap:14px}
+  .brandmark i{width:14px;height:14px;border-radius:4px;background:var(--orange);box-shadow:0 0 16px var(--orange)}
+  .brandmark{transition:opacity .6s}
+  .on5 .brandmark{opacity:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="grid"></div>
+  <div class="glow o" id="g1"></div>
+  <div class="glow c" id="g2"></div>
+  <div class="vignette"></div>
+
+  <div class="brandmark"><i></i>OBSERVABILITY LABS</div>
+
+  <!-- SCENE 1 — THE PROBLEM -->
+  <section class="scene" id="s1">
+    <div class="tag a" style="--d:.1s">The problem</div>
+    <div class="term a" style="--d:.3s"><span class="c">&gt;</span> <span class="type">agent: <span class="ok">✓</span> task complete.</span></div>
+    <div class="h">
+      <span class="mask"><span style="--d:1.2s">Your AI agent says <span class="c">“done.”</span></span></span>
+      <span class="mask"><span style="--d:2.2s">But what did it <span class="o">cost?</span></span></span>
+    </div>
+    <div class="chips">
+      <div class="chip a" style="--d:3.0s"><small>TOKENS</small><b data-scramble="0123456789?">??????</b></div>
+      <div class="chip a" style="--d:3.15s"><small>COST</small><b data-scramble="$0123456789?">$??.??</b></div>
+      <div class="chip a" style="--d:3.3s"><small>TIME</small><b data-scramble="0123456789?">??:??</b></div>
+    </div>
+  </section>
+
+  <!-- SCENE 2 — WHAT WE DO -->
+  <section class="scene" id="s2">
+    <div class="tag a" style="--d:.1s">What we do</div>
+    <div class="h">
+      <span class="mask"><span style="--d:.3s">We put AI coding tools</span></span>
+      <span class="mask"><span style="--d:.55s">in the <span class="c">lab.</span></span></span>
+    </div>
+    <div class="readout">
+      <div class="meter a" style="--d:1.4s"><small><i></i>TOKENS</small><b data-count data-to="184302" data-start="1.6" data-dur="3.6" data-fmt="int">0</b></div>
+      <div class="meter a" style="--d:1.6s"><small><i></i>COST</small><b class="o" data-count data-to="4.71" data-start="1.8" data-dur="3.4" data-fmt="usd">$0.00</b></div>
+      <div class="meter a" style="--d:1.8s"><small><i></i>TIME</small><b class="c" data-count data-to="768" data-start="2.0" data-dur="3.2" data-fmt="time">00:00</b></div>
+    </div>
+  </section>
+
+  <!-- SCENE 3 — HOW IT WORKS -->
+  <section class="scene" id="s3">
+    <div class="tag a" style="--d:.1s">How it works</div>
+    <div class="h m"><span class="mask"><span style="--d:.25s">Three steps. <span class="o">Zero vibes.</span></span></span></div>
+    <div class="steps">
+      <div class="track"><i></i></div>
+      <div class="step a" style="--d:.9s">
+        <div class="num">01</div><h3>Run</h3>
+        <p>The same real task, on every tool.</p>
+        <div class="viz"><span class="p">$</span> claude "fix the bug"<br><span style="color:#5fd38d">● running…</span></div>
+      </div>
+      <div class="step a" style="--d:2.7s">
+        <div class="num">02</div><h3>Measure</h3>
+        <p>Tokens, cost and time — logged.</p>
+        <div class="viz bars3"><div><i></i></div><div><i></i></div><div><i></i></div></div>
+      </div>
+      <div class="step a" style="--d:4.5s">
+        <div class="num">03</div><h3>Publish</h3>
+        <p>The raw numbers, on YouTube.</p>
+        <div class="viz yt"><div class="thumb"></div><div class="lines"><div></div><div></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCENE 4 — PROOF -->
+  <section class="scene" id="s4">
+    <div class="proof">
+      <div>
+        <div class="tag a" style="--d:.1s">Proof</div>
+        <div class="h m"><span class="mask"><span style="--d:.25s">Same task.</span></span><span class="mask"><span style="--d:.45s">Two agents.</span></span></div>
+        <div class="rows">
+          <div class="row a l" style="--d:.8s"><span>AGENT A</span><div class="bar a1"><i data-count data-to="412880" data-start="1.1" data-dur="1.8" data-fmt="int">0</i></div></div>
+          <div class="row a l" style="--d:.95s"><span>AGENT B</span><div class="bar b1"><i data-count data-to="133190" data-start="1.3" data-dur="1.8" data-fmt="int">0</i></div></div>
+        </div>
+        <div class="foot a" style="--d:1.4s">TOKENS USED · SAME PROMPT · SAME REPO</div>
+      </div>
+      <div class="big a s" style="--d:2.4s">
+        <b data-count data-to="3.1" data-start="2.5" data-dur="1.2" data-fmt="x">1.0×</b>
+        <p>the tokens for the <span class="c">same result.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCENE 5 — NAME -->
+  <section class="scene" id="s5">
+    <svg class="logo" viewBox="0 0 220 220">
+      <rect x="10" y="10" width="200" height="200" rx="44"/>
+      <polyline points="40,124 72,124 90,78 112,160 134,98 150,124 180,124"/>
+    </svg>
+    <div class="name"><span class="mask"><span style="--d:.9s">Observability <span class="o">Labs</span></span></span></div>
+    <div class="tagline a" style="--d:1.6s">Know what your AI coding tools <b>actually do.</b></div>
+    <div class="cta a s" style="--d:2.2s">Watch on YouTube</div>
+  </section>
+
+  <div class="wipe" id="wipe"><i></i><i></i><i></i></div>
+
+  <div class="hud"><span id="sc">01 / 05</span><div class="prog"><i id="prog"></i></div><span id="tc">00:00</span></div>
+</div>
+
+<script>
+(() => {
+  const DUR = [6, 6, 8, 5, 5];             // seconds per scene = 30s total
+  const TOTAL = DUR.reduce((a, b) => a + b, 0);
+  const starts = DUR.map((_, i) => DUR.slice(0, i).reduce((a, b) => a + b, 0));
+  const scenes = [...document.querySelectorAll('.scene')];
+  const stage = document.getElementById('stage');
+  const wipe = document.getElementById('wipe');
+  const prog = document.getElementById('prog');
+  const sc = document.getElementById('sc'), tc = document.getElementById('tc');
+  const g1 = document.getElementById('g1'), g2 = document.getElementById('g2');
+  const WIPE_LEAD = 0.42;                  // wipe starts this long before each cut
+
+  // fit 1920x1080 stage to window
+  const fit = () => { const s = Math.min(innerWidth / 1920, innerHeight / 1080); stage.style.transform = `scale(${s})`; };
+  addEventListener('resize', fit); fit();
+
+  const ease = t => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 4);
+  const fmt = {
+    int: v => Math.round(v).toLocaleString('en-US'),
+    usd: v => '$' + v.toFixed(2),
+    time: v => { v = Math.round(v); return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0'); },
+    x: v => v.toFixed(1) + '×'
+  };
+
+  const glowPos = [[0,0,0,0],[300,200,-200,-100],[700,-50,-500,150],[200,350,-100,-300],[560,240,-560,-240]];
+
+  let cur = -1, wiped = -1, t0 = performance.now();
+
+  function enter(i) {
+    if (cur >= 0) {
+      const prev = scenes[cur];
+      prev.classList.add('exit');
+      setTimeout(() => prev.classList.remove('active', 'exit'), 650);
+    }
+    scenes[i].classList.remove('exit');
+    void scenes[i].offsetWidth;            // restart CSS animations
+    scenes[i].classList.add('active');
+    stage.classList.toggle('on5', i === 4);
+    const [ox, oy, cx, cy] = glowPos[i];
+    g1.style.transform = `translate(${ox}px,${oy}px)`;
+    g2.style.transform = `translate(${cx}px,${cy}px)`;
+    sc.textContent = String(i + 1).padStart(2, '0') + ' / 05';
+    cur = i;
+  }
+
+  function playWipe() {
+    wipe.classList.remove('go'); void wipe.offsetWidth; wipe.classList.add('go');
+  }
+
+  function tick(now) {
+    const t = (Math.max(0, now - t0) / 1000) % TOTAL;
+    const i = Math.max(0, starts.filter(s => t >= s).length - 1);
+    if (i !== cur) enter(i);
+
+    // wipe ahead of the next cut (including loop back to start)
+    const next = (i + 1) % DUR.length;
+    const cutAt = starts[i] + DUR[i];
+    if (t >= cutAt - WIPE_LEAD && wiped !== next) { wiped = next; playWipe(); }
+    if (t < cutAt - WIPE_LEAD && wiped === next) wiped = -1;
+
+    const local = t - starts[i];
+
+    // counters in the active scene
+    scenes[i].querySelectorAll('[data-count]').forEach(el => {
+      const to = +el.dataset.to, st = +el.dataset.start, d = +el.dataset.dur, f = el.dataset.fmt;
+      const from = f === 'x' ? 1 : 0;
+      el.textContent = fmt[f](from + (to - from) * ease((local - st) / d));
+    });
+
+    // scrambling unknowns in scene 1
+    if (i === 0 && Math.floor(now / 70) !== tick.lastS) {
+      tick.lastS = Math.floor(now / 70);
+      scenes[0].querySelectorAll('[data-scramble]').forEach(el => {
+        const pool = el.dataset.scramble, base = el.dataset.base || (el.dataset.base = el.textContent);
+        el.textContent = [...base].map(ch => (ch === '?' && Math.random() < .5) ? pool[Math.floor(Math.random() * pool.length)] : ch === '?' ? '?' : ch).join('');
+      });
+    }
+
+    prog.style.width = (t / TOTAL * 100) + '%';
+    tc.textContent = '00:' + String(Math.floor(t)).padStart(2, '0');
+    requestAnimationFrame(tick);
+  }
+
+  // click / space to restart
+  const restart = () => { t0 = performance.now(); wiped = -1; if (cur >= 0) { scenes[cur].classList.remove('active','exit'); cur = -1; } };
+  addEventListener('click', restart);
+  addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); restart(); } });
+
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
