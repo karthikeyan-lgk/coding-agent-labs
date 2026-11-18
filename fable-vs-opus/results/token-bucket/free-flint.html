@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Bucket</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0e14; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0;
+let H = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+const COL = {
+  bg: '#0a0e14',
+  panel: '#121826',
+  border: '#2a3448',
+  text: '#e8ecf4',
+  muted: '#8b95ab',
+  accent: '#34d399',
+  accent2: '#38bdf8',
+  danger: '#f87171',
+  grid: 'rgba(139,149,171,0.14)',
+};
+
+const CAPACITY = 5;   // tokens the bucket holds at start / max
+const COST = 1;        // tokens each request spends
+const RATE = 0.8;      // tokens refilled per second
+const TIME_MAX = 9;    // seconds shown on the chart x-axis
+
+const EVENTS = [
+  { t: 0.0,  label: 'req-1' },
+  { t: 0.15, label: 'req-2' },
+  { t: 0.3,  label: 'req-3' },
+  { t: 0.45, label: 'req-4' },
+  { t: 0.6,  label: 'req-5' },
+  { t: 0.8,  label: 'req-6' },
+  { t: 2.0,  label: 'req-7' },
+  { t: 2.9,  label: 'req-8' },
+  { t: 3.8,  label: 'req-9' },
+  { t: 5.0,  label: 'req-10' },
+  { t: 6.0,  label: 'req-11' },
+  { t: 7.0,  label: 'req-12' },
+];
+
+// Pure function of time: given an instant t (seconds), derive the whole
+// token-bucket state up to that instant (no mutable accumulator, no frame counter).
+function stateAt(t) {
+  const events = [];
+  let tokens = CAPACITY;
+  let last = 0;
+  for (const e of EVENTS) {
+    if (e.t > t) break;
+    tokens = Math.min(CAPACITY, tokens + (e.t - last) * RATE);
+    last = e.t;
+    const accepted = tokens >= COST - 1e-9;
+    if (accepted) tokens = tokens - COST;
+    events.push({ t: e.t, label: e.label, accepted: accepted, tokensAfter: tokens });
+  }
+  tokens = Math.min(CAPACITY, tokens + (t - last) * RATE);
+  return { tokens: tokens, events: events };
+}
+
+function rr(x, y, w, h, r) {
+  const q = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + q, y);
+  ctx.lineTo(x + w - q, y);
+  ctx.arcTo(x + w, y, x + w, y + q, q);
+  ctx.lineTo(x + w, y + h - q);
+  ctx.arcTo(x + w, y + h, x + w - q, y + h, q);
+  ctx.lineTo(x + q, y + h);
+  ctx.arcTo(x, y + h, x, y + h - q, q);
+  ctx.lineTo(x, y + q);
+  ctx.arcTo(x, y, x + q, y, q);
+  ctx.closePath();
+}
+
+function draw(t) {
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, W, H);
+  const st = stateAt(t);
+
+  // legend (top right)
+  ctx.textAlign = 'right';
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillStyle = COL.accent;
+  ctx.fillText('● accepted', W - 24, 40);
+  ctx.fillStyle = COL.danger;
+  ctx.fillText('● rejected', W - 24, 60);
+  ctx.strokeStyle = COL.accent2;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(W - 24 - 30, 70);
+  ctx.lineTo(W - 24 - 48, 70);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = COL.muted;
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.fillText('capacity', W - 24 - 62, 74);
+
+  // title
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 28px system-ui, sans-serif';
+  ctx.fillStyle = COL.text;
+  ctx.fillText('Token Bucket', 30, 46);
+  ctx.font = '14px system-ui, sans-serif';
+  ctx.fillStyle = COL.muted;
+  ctx.fillText('capacity ' + CAPACITY + ' tokens · cost ' + COST + ' token · refill ' + RATE + ' token/s', 30, 72);
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillStyle = COL.muted;
+  ctx.fillText('starts full → burst up to capacity, then refills continuously', 30, 92);
+
+  // ---------- bucket ----------
+  const bx = 150;
+  const bw = 150;
+  const topY = 210;
+  const baseY = 500;
+  const cx = bx + bw / 2;
+  // rim
+  ctx.fillStyle = '#2c3650';
+  rr(cx - bw / 2 - 12, topY - 16, bw + 24, 18, 9);
+  ctx.fill();
+  // body
+  const bodyGrad = ctx.createLinearGradient(0, topY, 0, baseY);
+  bodyGrad.addColorStop(0, '#1a2233');
+  bodyGrad.addColorStop(1, '#121826');
+  ctx.fillStyle = bodyGrad;
+  ctx.fillRect(cx - bw / 2, topY, bw, baseY - topY);
+  // fill level
+  const fh = (st.tokens / CAPACITY) * (baseY - topY);
+  const fillTop = baseY - fh;
+  const fillGrad = ctx.createLinearGradient(0, fillTop, 0, baseY);
+  fillGrad.addColorStop(0, '#6ee7b7');
+  fillGrad.addColorStop(1, '#10b981');
+  ctx.fillStyle = fillGrad;
+  ctx.fillRect(cx - bw / 2, fillTop, bw, baseY - fillTop);
+  // outline
+  ctx.strokeStyle = '#3d4a68';
+  ctx.lineWidth = 1.5;
+  rr(cx - bw / 2, topY, bw, baseY - topY, 10);
+  ctx.stroke();
+  // discrete tokens inside the filled part
+  const sw = bw / CAPACITY;
+  const slotH = (baseY - topY) / CAPACITY;
+  const nTok = Math.min(CAPACITY, Math.floor(st.tokens + 1e-9));
+  const tr = Math.min(slotH * 0.34, sw * 0.3);
+  for (let i = 0; i < nTok; i++) {
+    const tx = cx - bw / 2 + sw * (i + 0.5);
+    const ty = baseY - (i + 0.5) * slotH;
+    ctx.beginPath();
+    ctx.arc(tx, ty, tr, 0, Math.PI * 2);
+    ctx.fillStyle = '#34d399';
+    ctx.fill();
+    ctx.strokeStyle = COL.bg;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  // bucket caption
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 18px system-ui, sans-serif';
+  ctx.fillStyle = COL.text;
+  ctx.fillText(st.tokens.toFixed(2) + ' tokens', cx, baseY + 34);
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.fillStyle = COL.muted;
+  ctx.fillText('available', cx, baseY + 52);
+
+  // ---------- chart: tokens over time ----------
+  const left = 470;
+  const right = W - 24;
+  const top = 120;
+  const bottom = Math.min(560, H - 30);
+  const plotW = right - left;
+  const plotH = bottom - top;
+  const X = function (t0) { return left + (Math.min(t0, TIME_MAX) / TIME_MAX) * plotW; };
+  const Y = function (tk) { return bottom - (tk / CAPACITY) * plotH; };
+
+  // gridlines at 0, 2.5, 5 tokens
+  ctx.strokeStyle = COL.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= CAPACITY; i += CAPACITY / 2) {
+    const yy = Y(i);
+    ctx.moveTo(left, yy);
+    ctx.lineTo(right, yy);
+  }
+  ctx.stroke();
+
+  // capacity line
+  ctx.strokeStyle = COL.accent2;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(left, Y(CAPACITY));
+  ctx.lineTo(right, Y(CAPACITY));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = COL.accent2;
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('capacity = ' + CAPACITY, left, Y(CAPACITY) - 22);
+
+  // axes
+  ctx.strokeStyle = '#2a3448';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, bottom);
+  ctx.stroke();
+
+  // token axis labels
+  ctx.fillStyle = COL.muted;
+  ctx.font = '11px system-ui, sans-serif';
+  for (let i = 0; i <= CAPACITY; i++) {
+    ctx.textAlign = 'left';
+    ctx.fillText(String(i), left + 4, Y(i) + 4);
+  }
+
+  // token level polyline through events + current instant
+  const pts = [{ t: 0, tokens: CAPACITY }];
+  for (const e of st.events) pts.push({ t: e.t, tokens: e.tokensAfter });
+  pts.push({ t: t, tokens: st.tokens });
+  ctx.beginPath();
+  let pen = false;
+  for (const p of pts) {
+    const px = X(p.t);
+    const py = Y(p.tokens);
+    if (!pen) { ctx.moveTo(px, py); pen = true; } else { ctx.lineTo(px, py); }
+  }
+  ctx.strokeStyle = COL.accent;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // event markers
+  for (const e of st.events) {
+    const px = X(e.t);
+    const py = Y(e.tokensAfter);
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fillStyle = e.accepted ? COL.accent : COL.danger;
+    ctx.fill();
+    ctx.strokeStyle = '#0a0e14';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = e.accepted ? COL.accent : COL.danger;
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(e.label, px, py - 10);
+  }
+
+  // current-time marker
+  if (t <= TIME_MAX) {
+    const Xnow = X(t);
+    ctx.strokeStyle = COL.accent;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(Xnow, top);
+    ctx.lineTo(Xnow, bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = COL.accent;
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('now', Xnow + 6, top - 8);
+  }
+
+  // time axis labels
+  ctx.textAlign = 'left';
+  ctx.fillStyle = COL.muted;
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.fillText('0s', left, bottom + 20);
+  ctx.textAlign = 'right';
+  ctx.fillText(TIME_MAX + 's', right, bottom + 20);
+}
+
+let START = 0;
+function frame(ts) {
+  const t = (ts - START) / 1000;
+  draw(t);
+  requestAnimationFrame(frame);
+}
+addEventListener('load', function () {
+  START = performance.now();
+  resize();
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

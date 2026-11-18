@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIMBUS / AI Data Centre 04 — Live Cutaway</title>
+<style>
+  :root{
+    --bg:#05080d;
+    --bg-2:#080d15;
+    --ink:#eaf3f8;
+    --ink-2:#a9b9c8;
+    --muted:#718497;
+    --faint:#4c5d6e;
+    --line:rgba(142,176,205,.13);
+    --line-strong:rgba(142,176,205,.24);
+    --panel:rgba(7,12,19,.66);
+    --accent:#63e6ff;
+    --accent-rgb:99,230,255;
+    --accent-2:#7aa2ff;
+    --good:#0ca30c;
+    --amber:#ffb35c;
+    --red:#ff6b57;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  button{font:inherit;color:inherit}
+  button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
+
+  /* ---------- atmosphere ---------- */
+  .bg{
+    position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;
+    background:
+      radial-gradient(1200px 760px at 68% 12%, rgba(33,77,112,.20), transparent 62%),
+      radial-gradient(900px 700px at 15% 88%, rgba(17,73,74,.10), transparent 65%),
+      linear-gradient(180deg,#05080d 0%,#060a11 55%,#04070b 100%);
+  }
+  .bg-grid{
+    position:absolute;inset:-10%;
+    background-image:
+      linear-gradient(rgba(120,170,205,.045) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(120,170,205,.045) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(ellipse 80% 75% at 50% 45%,#000 20%,transparent 78%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 75% at 50% 45%,#000 20%,transparent 78%);
+    opacity:.65;
+  }
+  .bg-aurora{
+    position:absolute;width:70vw;height:70vw;left:35%;top:-30%;border-radius:50%;
+    background:radial-gradient(circle,rgba(var(--accent-rgb),.07),transparent 65%);
+    filter:blur(30px);transition:background 1.2s ease;
+  }
+  .bg-scan{
+    position:absolute;inset:0;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.016) 0 1px,transparent 1px 3px);
+    opacity:.32;mix-blend-mode:screen;
+  }
+
+  /* ---------- boot ---------- */
+  .boot{
+    position:fixed;inset:0;z-index:100;display:grid;place-items:center;
+    background:#05080d;
+    animation:bootOut .7s ease 1.15s forwards;
+  }
+  .boot-inner{text-align:center;transform:translateY(-4vh)}
+  .boot-mark{
+    width:46px;height:46px;margin:0 auto 18px;border:1px solid rgba(var(--accent-rgb),.5);
+    border-radius:50%;display:grid;place-items:center;position:relative;
+  }
+  .boot-mark:before{
+    content:"";width:12px;height:12px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 24px var(--accent);animation:pulse 1.4s infinite;
+  }
+  .boot-title{font-family:var(--mono);font-size:11px;letter-spacing:.28em;color:#aabcc9}
+  .boot-line{width:180px;height:1px;margin:16px auto 0;background:#182430;overflow:hidden}
+  .boot-line:after{content:"";display:block;width:100%;height:100%;background:var(--accent);transform-origin:left;animation:bootLine 1.2s ease forwards}
+  @keyframes bootOut{to{opacity:0;visibility:hidden}}
+  @keyframes bootLine{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @keyframes pulse{0%,100%{opacity:.55;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+
+  /* ---------- frame ---------- */
+  .app{
+    position:relative;z-index:2;height:100vh;height:100dvh;
+    display:grid;grid-template-rows:64px minmax(0,1fr) 104px;
+    min-height:640px;
+  }
+  header{
+    display:flex;align-items:center;justify-content:space-between;gap:24px;
+    padding:0 20px;border-bottom:1px solid var(--line);
+    background:rgba(5,9,14,.66);backdrop-filter:blur(12px);
+    position:relative;z-index:20;
+  }
+  .brand{display:flex;align-items:center;gap:13px;min-width:0}
+  .mark{
+    width:26px;height:26px;border-radius:50%;position:relative;flex:none;
+    border:1px solid rgba(var(--accent-rgb),.45);
+    background:radial-gradient(circle at 36% 32%,rgba(var(--accent-rgb),.95),rgba(var(--accent-rgb),.15) 38%,transparent 40%);
+    box-shadow:0 0 18px rgba(var(--accent-rgb),.18);
+  }
+  .mark:after{
+    content:"";position:absolute;inset:6px;border-radius:50%;
+    border:1px solid rgba(var(--accent-rgb),.38);
+  }
+  .brand-name{font-family:var(--mono);font-size:12px;letter-spacing:.22em;line-height:1.1;white-space:nowrap}
+  .brand-sub{font-family:var(--mono);font-size:9px;letter-spacing:.16em;color:var(--muted);margin-top:4px;white-space:nowrap}
+  .header-center{
+    display:flex;align-items:center;gap:10px;
+    font-family:var(--mono);font-size:9px;letter-spacing:.17em;color:var(--muted);
+    white-space:nowrap;overflow:hidden;
+  }
+  .header-center .slash{color:#334455}
+  .header-right{display:flex;align-items:center;gap:18px;flex:none}
+  .status{
+    display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:9px;
+    letter-spacing:.13em;color:#a9c5b2;white-space:nowrap;
+  }
+  .status-dot{width:5px;height:5px;border-radius:50%;background:#45e08a;box-shadow:0 0 9px #45e08a}
+  .clock{
+    font-family:var(--mono);font-size:11px;color:#c3d3de;letter-spacing:.06em;
+    padding-left:18px;border-left:1px solid var(--line);white-space:nowrap;
+  }
+  .clock small{color:var(--muted);font-size:8px;letter-spacing:.12em}
+
+  .shell{
+    display:grid;grid-template-columns:76px minmax(0,1fr) 350px;
+    min-height:0;overflow:hidden;
+  }
+
+  /* ---------- left rail ---------- */
+  .rail{
+    border-right:1px solid var(--line);padding:17px 0 15px;
+    display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+    background:rgba(5,9,14,.25);position:relative;
+  }
+  .rail-top{text-align:center}
+  .rail-04{font-family:var(--mono);font-size:20px;letter-spacing:-.06em;color:#c8d7e2;line-height:1}
+  .rail-label{
+    writing-mode:vertical-rl;transform:rotate(180deg);
+    font-family:var(--mono);font-size:8px;letter-spacing:.28em;color:var(--faint);
+    margin-top:14px;
+  }
+  .rail-dots{display:flex;flex-direction:column;gap:17px;align-items:center;position:relative;padding:8px 0}
+  .rail-dots:before{
+    content:"";position:absolute;left:50%;top:10px;bottom:10px;width:1px;
+    background:repeating-linear-gradient(180deg,rgba(130,165,195,.18) 0 3px,transparent 3px 7px);
+  }
+  .rail-dot{
+    width:7px;height:7px;border-radius:50%;background:#1b2a37;position:relative;z-index:1;
+    transition:background .4s ease,box-shadow .4s ease,transform .4s ease;
+  }
+  .rail-dot.on{background:var(--accent);box-shadow:0 0 13px rgba(var(--accent-rgb),.9);transform:scale(1.25)}
+  .rail-foot{font-family:var(--mono);font-size:7px;line-height:1.8;letter-spacing:.12em;color:var(--faint);text-align:center}
+
+  /* ---------- stage ---------- */
+  .stage{
+    min-width:0;min-height:0;display:grid;grid-template-rows:46px minmax(0,1fr) auto;
+    border-right:1px solid var(--line);position:relative;overflow:hidden;
+    background:linear-gradient(180deg,rgba(8,14,22,.18),rgba(5,9,14,.1));
+  }
+  .stage-hud{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:0 22px;border-bottom:1px solid rgba(142,176,205,.07);
+    font-family:var(--mono);font-size:8px;letter-spacing:.17em;color:var(--muted);
+    white-space:nowrap;overflow:hidden;
+  }
+  .hud-left,.hud-right{display:flex;align-items:center;gap:13px;min-width:0}
+  .hud-live{display:flex;align-items:center;gap:7px;color:#d9e7ee}
+  .hud-live i{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent);animation:pulse 1.8s infinite}
+  .hud-rule{width:28px;height:1px;background:var(--line-strong)}
+  .hud-dim{color:#4b5f70}
+  .hud-tour{display:flex;align-items:center;gap:8px;color:#91a7b8}
+  .hud-tour b{font-weight:400;color:#c8d9e4;font-variant-numeric:tabular-nums}
+  .pause{
+    border:1px solid var(--line-strong);background:rgba(10,18,26,.55);
+    width:22px;height:22px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+    padding:0;color:#9db1c0;transition:border-color .2s,color .2s,background .2s;
+  }
+  .pause:hover{border-color:rgba(var(--accent-rgb),.5);color:var(--accent);background:rgba(var(--accent-rgb),.06)}
+  .pause:before{content:"";display:block;width:6px;height:8px;border-left:2px solid currentColor;border-right:2px solid currentColor}
+  .pause.play:before{
+    width:0;height:0;border:0;border-left:7px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;
+  }
+
+  .canvas-wrap{position:relative;min-height:280px;overflow:hidden;isolation:isolate}
+  #scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .canvas-vignette{
+    position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(ellipse 90% 80% at 50% 48%,transparent 45%,rgba(4,7,11,.38) 100%),
+      linear-gradient(180deg,rgba(5,9,14,.22),transparent 18%,transparent 80%,rgba(5,9,14,.5));
+  }
+  .scanlines{
+    position:absolute;inset:0;pointer-events:none;opacity:.13;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.12) 0 1px,transparent 1px 3px);
+    mix-blend-mode:overlay;
+  }
+  .crosshair{
+    position:absolute;left:50%;top:50%;width:18px;height:18px;opacity:0;
+    border:1px solid rgba(var(--accent-rgb),.28);border-radius:50%;pointer-events:none;
+    transform:translate(-50%,-50%);transition:opacity .4s;
+  }
+  .crosshair:before,.crosshair:after{content:"";position:absolute;background:rgba(var(--accent-rgb),.4)}
+  .crosshair:before{left:50%;top:-6px;width:1px;height:30px}
+  .crosshair:after{top:50%;left:-6px;height:1px;width:30px}
+
+  .tag{
+    position:absolute;z-index:4;display:flex;align-items:center;gap:8px;
+    padding:6px 9px 6px 8px;background:rgba(5,11,17,.78);
+    border:1px solid rgba(var(--accent-rgb),.26);
+    box-shadow:0 8px 30px rgba(0,0,0,.22);
+    backdrop-filter:blur(7px);
+    font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:#b9cad6;
+    opacity:0;transform:translateY(5px);pointer-events:none;
+    transition:opacity .55s ease,transform .55s ease,border-color .55s ease;
+    white-space:nowrap;
+  }
+  .tag:before{
+    content:"";width:4px;height:4px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 9px var(--accent);flex:none;
+  }
+  .tag:after{
+    content:"";position:absolute;left:12px;top:100%;width:1px;height:28px;
+    background:linear-gradient(180deg,rgba(var(--accent-rgb),.5),transparent);
+  }
+  .tag.on{opacity:1;transform:none}
+  .tag-edge{left:18%;top:68%}
+  .tag-net{left:44%;top:49%}
+  .tag-gpu{left:58%;top:25%}
+  .tag-cool{left:77%;top:20%}
+  .tag-power{left:7%;top:25%}
+  .tag-deliver{left:37%;top:74%}
+
+  .scene-legend{
+    position:absolute;right:16px;bottom:13px;z-index:5;display:flex;gap:13px;
+    font-family:var(--mono);font-size:7px;letter-spacing:.1em;color:#61778a;
+  }
+  .scene-legend span{display:flex;align-items:center;gap:5px}
+  .scene-legend i{width:4px;height:4px;border-radius:50%;display:inline-block}
+  .lg-data{background:#63e6ff;box-shadow:0 0 6px #63e6ff}
+  .lg-power{background:#ffb35c;box-shadow:0 0 6px #ffb35c}
+  .lg-cool{background:#4de3c1;box-shadow:0 0 6px #4de3c1}
+
+  .caption{
+    position:relative;display:grid;grid-template-columns:76px minmax(0,1fr) 190px;
+    gap:18px;padding:18px 24px 20px;border-top:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(7,12,19,.55),rgba(5,8,13,.96) 55%);
+    min-height:148px;
+  }
+  .caption:before{
+    content:"";position:absolute;left:0;top:-1px;width:var(--chapter-progress,0%);height:1px;
+    background:var(--accent);box-shadow:0 0 12px rgba(var(--accent-rgb),.7);transition:width .1s linear;
+  }
+  .cap-index{padding-top:5px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--accent);white-space:nowrap}
+  .cap-index b{font-size:19px;font-weight:400;letter-spacing:-.03em;color:#dfeaf1;display:block;line-height:1.1}
+  .cap-index span{display:block;color:#556a7b;margin-top:4px;font-size:8px;letter-spacing:.16em}
+  .cap-body{min-width:0}
+  .cap-topline{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .cap-kicker{font-family:var(--mono);font-size:8px;letter-spacing:.2em;color:#6f8698;white-space:nowrap}
+  .cap-rule{height:1px;width:34px;background:linear-gradient(90deg,rgba(var(--accent-rgb),.55),transparent)}
+  .cap-title{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0}
+  .cap-title h2{
+    margin:0;font-size:clamp(26px,2.7vw,42px);line-height:.95;letter-spacing:-.055em;
+    font-weight:650;color:#f0f7fb;
+  }
+  .cap-title .cap-deck{
+    font-size:clamp(12px,1.05vw,15px);line-height:1.25;color:#bdcbd7;font-weight:400;
+    letter-spacing:-.01em;max-width:520px;
+  }
+  .cap-copy{
+    margin:8px 0 0;max-width:690px;color:#8da0b1;font-size:11.5px;line-height:1.55;
+    letter-spacing:.005em;
+  }
+  .cap-meta{
+    align-self:end;text-align:right;padding-bottom:3px;min-width:0;
+  }
+  .meta-label{display:block;font-family:var(--mono);font-size:7px;letter-spacing:.18em;color:#526777;margin-bottom:6px}
+  .meta-value{
+    display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:#b9cbd7;
+    border:1px solid var(--line-strong);padding:6px 8px;background:rgba(7,13,20,.5);white-space:nowrap;
+  }
+  .cap-body.swap{animation:swapIn .55s cubic-bezier(.2,.8,.2,1)}
+  @keyframes swapIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{min-height:0;overflow:hidden;background:rgba(6,10,16,.46);display:flex;flex-direction:column}
+  .panel{padding:15px 17px;border-bottom:1px solid var(--line);position:relative;min-height:0}
+  .panel:last-child{border-bottom:0}
+  .panel-head{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    margin-bottom:12px;font-family:var(--mono);font-size:8px;letter-spacing:.16em;color:#617687;
+  }
+  .panel-head .live{display:flex;align-items:center;gap:5px;color:#9cb0bf}
+  .panel-head .live i{width:4px;height:4px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);animation:pulse 2s infinite}
+  .panel-head .quiet{color:#465a6b;font-size:7px}
+
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(142,176,205,.1);border:1px solid rgba(142,176,205,.1)}
+  .stat{background:rgba(8,14,22,.88);padding:10px 11px 9px;min-width:0}
+  .stat-label{font-family:var(--mono);font-size:7px;letter-spacing:.12em;color:#61788a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stat-value{font-family:var(--mono);font-size:17px;color:#dfeaf2;letter-spacing:-.04em;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .stat-value small{font-size:9px;color:#70869a;margin-left:2px;letter-spacing:0}
+  .stat-foot{font-family:var(--mono);font-size:7px;color:#506475;margin-top:3px;white-space:nowrap}
+
+  .chart-head{display:flex;align-items:flex-end;justify-content:space-between;margin-top:14px;margin-bottom:5px}
+  .chart-title{font-family:var(--mono);font-size:7px;letter-spacing:.13em;color:#61788a}
+  .chart-now{font-family:var(--mono);font-size:15px;color:var(--accent);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .chart-now small{font-size:8px;color:#7d93a5;margin-left:2px}
+  .chart-wrap{position:relative;height:66px}
+  #utilChart{width:100%;height:100%;display:block}
+  .chart-tip{
+    position:absolute;z-index:5;pointer-events:none;opacity:0;transform:translate(-50%,-100%);
+    background:rgba(5,11,17,.95);border:1px solid var(--line-strong);padding:4px 6px;
+    font-family:var(--mono);font-size:7px;letter-spacing:.06em;color:#c5d4df;white-space:nowrap;
+    box-shadow:0 5px 20px rgba(0,0,0,.3);
+  }
+  .chart-tip.on{opacity:1}
+
+  /* rack elevation */
+  .rack-panel{padding-top:14px}
+  .rack-wrap{display:flex;gap:16px;align-items:stretch}
+  .rack{
+    width:118px;flex:none;border:1px solid rgba(142,176,205,.22);border-radius:2px;
+    background:#04080c;padding:4px;box-shadow:inset 0 0 26px rgba(0,0,0,.8);
+    position:relative;
+  }
+  .rack:before{
+    content:"";position:absolute;left:-4px;top:8px;bottom:8px;width:2px;
+    background:linear-gradient(180deg,transparent,rgba(var(--accent-rgb),.6),transparent);
+    opacity:.5;transition:opacity .4s,background .4s;
+  }
+  .rack-slot{
+    height:9px;margin-bottom:2px;position:relative;overflow:hidden;
+    border:1px solid rgba(142,176,205,.10);
+    background:linear-gradient(90deg,#0b141e,#111d28);
+  }
+  .rack-slot:last-child{margin-bottom:0}
+  .rack-slot.gpu{
+    background:
+      repeating-linear-gradient(90deg,transparent 0 5px,rgba(120,180,205,.07) 5px 6px),
+      linear-gradient(90deg,#0c1a1e,#102226);
+  }
+  .rack-slot.gpu:after{
+    content:"";position:absolute;right:5px;top:50%;width:2px;height:2px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 5px var(--accent);opacity:.55;
+  }
+  .rack-slot.psu{background:linear-gradient(90deg,#1b1409,#21180b)}
+  .rack-slot.psu:after{
+    content:"";position:absolute;left:5px;top:50%;width:2px;height:2px;border-radius:50%;
+    background:var(--amber);box-shadow:0 0 5px var(--amber);
+  }
+  .rack-slot.net{background:linear-gradient(90deg,#0a1422,#0d1a2b)}
+  .rack-slot.net:after{
+    content:"";position:absolute;right:5px;top:50%;width:2px;height:2px;border-radius:50%;
+    background:var(--accent-2);box-shadow:0 0 5px var(--accent-2);
+  }
+  .rack-manifold{
+    position:absolute;right:3px;top:4px;bottom:4px;width:4px;
+    background:linear-gradient(180deg,rgba(77,227,193,.08),rgba(77,227,193,.42),rgba(77,227,193,.08));
+    opacity:.35;transition:opacity .5s;
+  }
+  .rack-side{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:2px 0}
+  .rack-tag{font-family:var(--mono);font-size:7px;letter-spacing:.12em;color:#5d7384}
+  .rack-big{font-family:var(--mono);font-size:22px;color:#dfebf2;letter-spacing:-.05em;margin-top:2px}
+  .rack-big small{font-size:9px;color:#718799;margin-left:2px}
+  .rack-meta{font-family:var(--mono);font-size:7px;line-height:1.9;color:#5c7182;margin-top:5px}
+  .rack-meta b{font-weight:400;color:#9db1bf}
+  .temp-bar{height:3px;background:#16232f;margin-top:7px;overflow:hidden}
+  .temp-bar i{display:block;height:100%;background:linear-gradient(90deg,#4de3c1,#ffb35c);width:62%;box-shadow:0 0 8px rgba(77,227,193,.3)}
+  .temp-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:6px;color:#5d7384;margin-top:3px}
+
+  /* event log */
+  .log-panel{flex:1;overflow:hidden;display:flex;flex-direction:column}
+  .log-list{display:flex;flex-direction:column;gap:0;min-height:0}
+  .log-row{
+    display:grid;grid-template-columns:48px 6px minmax(0,1fr);gap:8px;align-items:start;
+    padding:6px 0;border-top:1px solid rgba(142,176,205,.065);
+    font-family:var(--mono);font-size:7.5px;line-height:1.35;color:#8298a9;
+    opacity:.72;transition:opacity .3s;
+  }
+  .log-row:first-child{border-top:0}
+  .log-row.new{animation:logIn .45s ease}
+  .log-time{color:#4f6474;font-variant-numeric:tabular-nums}
+  .log-dot{width:4px;height:4px;border-radius:50%;background:var(--accent);margin-top:3px;box-shadow:0 0 5px rgba(var(--accent-rgb),.6)}
+  .log-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log-text b{color:#c1d1dc;font-weight:400}
+  @keyframes logIn{from{opacity:0;transform:translateY(-4px)}to{opacity:.72;transform:none}}
+
+  /* ---------- chapters ---------- */
+  .chapters{
+    position:relative;z-index:12;display:grid;grid-template-columns:216px repeat(6,minmax(0,1fr));
+    border-top:1px solid var(--line);background:rgba(5,9,14,.88);
+    backdrop-filter:blur(12px);min-height:0;
+  }
+  .tour-control{
+    display:flex;align-items:center;gap:12px;padding:0 16px;border-right:1px solid var(--line);
+    min-width:0;
+  }
+  .play{
+    width:30px;height:30px;border-radius:50%;border:1px solid var(--line-strong);
+    background:rgba(10,18,26,.6);display:grid;place-items:center;cursor:pointer;padding:0;
+    color:#a8bdcb;transition:color .2s,border-color .2s,background .2s;flex:none;
+  }
+  .play:hover{color:var(--accent);border-color:rgba(var(--accent-rgb),.5);background:rgba(var(--accent-rgb),.07)}
+  .play:before{content:"";display:block;width:0;height:0;border-left:7px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;margin-left:2px}
+  .play.playing:before{
+    width:7px;height:9px;border:0;border-left:2px solid currentColor;border-right:2px solid currentColor;margin-left:0;
+  }
+  .tour-meta{min-width:0}
+  .tour-title{font-family:var(--mono);font-size:7px;letter-spacing:.17em;color:#5f7586;white-space:nowrap}
+  .tour-sub{font-family:var(--mono);font-size:9px;color:#9fb2c0;margin-top:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .tour-sub span{color:#516777}
+
+  .chapter{
+    position:relative;text-align:left;border:0;border-right:1px solid var(--line);
+    background:transparent;padding:14px 14px 12px;cursor:pointer;min-width:0;
+    color:#667b8d;transition:background .3s,color .3s;overflow:hidden;
+  }
+  .chapter:last-child{border-right:0}
+  .chapter:hover{background:rgba(142,176,205,.035);color:#a5b9c8}
+  .chapter .num{
+    display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:7px;letter-spacing:.15em;
+    color:#4c6172;transition:color .3s;
+  }
+  .chapter .num:before{content:"";width:13px;height:1px;background:currentColor;opacity:.55}
+  .chapter .name{
+    display:block;font-size:12px;font-weight:600;letter-spacing:.015em;margin-top:6px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .chapter .sub{
+    display:block;font-family:var(--mono);font-size:7px;letter-spacing:.03em;color:#4d6273;
+    margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .chapter.active{background:rgba(var(--accent-rgb),.045);color:#e5f1f7}
+  .chapter.active .num{color:var(--accent)}
+  .chapter.active .sub{color:#6f8799}
+  .chapter.active:after{
+    content:"";position:absolute;left:0;top:0;height:2px;width:var(--p,0%);
+    background:var(--accent);box-shadow:0 0 12px rgba(var(--accent-rgb),.7);
+  }
+  .chapter .arrow{
+    position:absolute;right:10px;top:16px;color:var(--accent);font-family:var(--mono);
+    font-size:10px;opacity:0;transform:translateX(-3px);transition:opacity .3s,transform .3s;
+  }
+  .chapter.active .arrow{opacity:.8;transform:none}
+
+  /* chapter-specific component lighting */
+  .app[data-chapter="0"] .rack-slot.gpu{box-shadow:inset 0 0 10px rgba(99,230,255,.1)}
+  .app[data-chapter="1"] .rack-slot.net{box-shadow:inset 0 0 12px rgba(122,162,255,.18)}
+  .app[data-chapter="2"] .rack-slot.gpu{background:linear-gradient(90deg,#0d2020,#142d2a)}
+  .app[data-chapter="2"] .rack-slot.gpu:after{opacity:1;box-shadow:0 0 7px var(--accent)}
+  .app[data-chapter="3"] .rack-manifold{opacity:1;background:linear-gradient(180deg,rgba(77,227,193,.1),rgba(77,227,193,.75),rgba(77,227,193,.1))}
+  .app[data-chapter="4"] .rack-slot.psu{box-shadow:inset 0 0 12px rgba(255,179,92,.22)}
+  .app[data-chapter="4"] .rack-slot.psu:after{opacity:1;box-shadow:0 0 8px var(--amber)}
+  .app[data-chapter="5"] .rack-slot.gpu:after{animation:blink .8s steps(2) infinite}
+  @keyframes blink{50%{opacity:.1}}
+
+  /* ---------- responsive ---------- */
+  @media (max-width:1240px){
+    .shell{grid-template-columns:66px minmax(0,1fr) 318px}
+    .caption{grid-template-columns:64px minmax(0,1fr) 160px;gap:14px;padding-left:20px;padding-right:20px}
+    .chapter{padding-left:11px;padding-right:11px}
+    .chapters{grid-template-columns:188px repeat(6,minmax(0,1fr))}
+    .tour-control{padding:0 12px}
+    .cap-meta{display:none}
+    .caption{grid-template-columns:64px minmax(0,1fr)}
+  }
+  @media (max-width:1020px){
+    .header-center{display:none}
+    .shell{grid-template-columns:56px minmax(0,1fr) 288px}
+    .rail-label{display:none}
+    .chapter .sub{display:none}
+    .chapters{grid-template-columns:160px repeat(6,minmax(0,1fr))}
+    .tour-title{display:none}
+    .tour-sub{font-size:8px}
+    .panel{padding-left:13px;padding-right:13px}
+    .rack-wrap{gap:10px}
+    .rack{width:102px}
+    .tag{font-size:7px;padding:5px 7px}
+  }
+  @media (max-width:880px){
+    body{overflow:auto}
+    .app{height:auto;min-height:100dvh;grid-template-rows:60px auto auto}
+    .shell{grid-template-columns:1fr;overflow:visible}
+    .rail{display:none}
+    .stage{min-height:580px;border-right:0}
+    .sidebar{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+    .panel{border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+    .panel:nth-child(2n){border-right:0}
+    .log-panel{display:none}
+    .chapters{grid-template-columns:150px repeat(6,minmax(120px,1fr));overflow-x:auto}
+    .caption{grid-template-columns:56px minmax(0,1fr);min-height:138px}
+    .cap-title h2{font-size:32px}
+    .stage-hud{font-size:7px;padding:0 14px}
+    .tag{font-size:6px}
+  }
+  @media (max-width:620px){
+    .app{grid-template-rows:56px auto auto}
+    header{padding:0 14px}
+    .header-right{gap:10px}
+    .status{display:none}
+    .clock{padding-left:10px;font-size:10px}
+    .brand-sub{font-size:7px}
+    .brand-name{font-size:10px}
+    .stage{min-height:520px}
+    .caption{padding:15px 15px 17px;grid-template-columns:1fr;gap:8px;min-height:0}
+    .cap-index{display:none}
+    .cap-title{gap:8px}
+    .cap-title h2{font-size:30px}
+    .cap-title .cap-deck{font-size:11px}
+    .cap-copy{font-size:10.5px;margin-top:6px}
+    .sidebar{grid-template-columns:1fr}
+    .panel{border-right:0}
+    .panel.log-panel{display:none}
+    .chapters{display:flex;height:76px}
+    .tour-control{display:none}
+    .chapter{flex:1 0 130px;min-width:130px}
+    .scene-legend{display:none}
+    .tag-power{left:5%;top:22%}
+    .tag-cool{left:auto;right:5%;top:18%}
+    .tag-gpu{left:auto;right:10%;top:30%}
+    .tag-net{left:38%;top:50%}
+    .tag-edge{left:8%;top:70%}
+    .tag-deliver{left:25%;top:74%}
+    .stage-hud .hud-tour{display:none}
+  }
+  @media (max-height:760px) and (min-width:881px){
+    .app{grid-template-rows:58px minmax(0,1fr) 92px}
+    .caption{min-height:128px;padding-top:14px;padding-bottom:15px}
+    .cap-title h2{font-size:32px}
+    .cap-copy{font-size:10.5px;line-height:1.45}
+    .panel{padding-top:11px;padding-bottom:11px}
+    .stats .stat{padding:7px 9px}
+    .stat-value{font-size:15px}
+    .chart-wrap{height:52px}
+    .log-row:nth-child(n+4){display:none}
+    .chapter{padding-top:11px;padding-bottom:9px}
+    .chapter .name{margin-top:4px}
+    .chapter .sub{margin-top:2px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*:before,*:after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+    .boot{display:none}
+  }
+</style>
+</head>
+<body data-chapter="0">
+<div class="bg" aria-hidden="true">
+  <div class="bg-grid"></div>
+  <div class="bg-aurora"></div>
+  <div class="bg-scan"></div>
+</div>
+
+<div class="boot" aria-hidden="true">
+  <div class="boot-inner">
+    <div class="boot-mark"></div>
+    <div class="boot-title">NIMBUS / DC-04</div>
+    <div class="boot-line"></div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <header>
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div>
+        <div class="brand-name">NIMBUS // AI DC-04</div>
+        <div class="brand-sub">LIVE INFRASTRUCTURE CUTAWAY</div>
+      </div>
+    </div>
+    <div class="header-center" aria-hidden="true">
+      <span>FAIRVIEW CAMPUS</span><span class="slash">/</span><span>HALL B</span><span class="slash">/</span><span>ISOMETRIC SECTION</span>
+    </div>
+    <div class="header-right">
+      <div class="status"><span class="status-dot"></span>ALL SYSTEMS NOMINAL</div>
+      <div class="clock"><span id="clock">00:00:00</span> <small>UTC</small></div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="rail" aria-hidden="true">
+      <div class="rail-top">
+        <div class="rail-04">04</div>
+        <div class="rail-label">AI INFRASTRUCTURE</div>
+      </div>
+      <div class="rail-dots" id="railDots">
+        <span class="rail-dot on"></span>
+        <span class="rail-dot"></span>
+        <span class="rail-dot"></span>
+        <span class="rail-dot"></span>
+        <span class="rail-dot"></span>
+        <span class="rail-dot"></span>
+      </div>
+      <div class="rail-foot">37.77°N<br>122.42°W</div>
+    </aside>
+
+    <main class="stage">
+      <div class="stage-hud">
+        <div class="hud-left">
+          <span class="hud-live"><i></i>LIVE CUTAWAY</span>
+          <span class="hud-rule"></span>
+          <span>LEVEL −1 / HALL B</span>
+          <span class="hud-dim">REFRIGERANT: 45°C</span>
+        </div>
+        <div class="hud-right">
+          <span class="hud-tour">AUTO TOUR <b id="hudNext">00:16</b></span>
+          <button class="pause" id="hudPause" aria-label="Pause auto tour"></button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="scene" role="img" aria-label="Animated isometric cutaway of an AI data centre showing edge gateway, network fabric, GPU racks, liquid cooling, and power distribution"></canvas>
+        <div class="crosshair" aria-hidden="true"></div>
+        <div class="canvas-vignette" aria-hidden="true"></div>
+        <div class="scanlines" aria-hidden="true"></div>
+
+        <div class="tag tag-edge" data-tag="edge"><span>EDGE GATEWAY / 18.6K RPS</span></div>
+        <div class="tag tag-net" data-tag="net"><span>400G LEAF-SPINE / 0.8 µs</span></div>
+        <div class="tag tag-gpu" data-tag="gpu"><span>GPU ROW 03 / 1,024 × 80GB HBM</span></div>
+        <div class="tag tag-cool" data-tag="cool"><span>CDU-02 / 45.2°C RETURN</span></div>
+        <div class="tag tag-power" data-tag="power"><span>54V DC BUS / 8.4 MW</span></div>
+        <div class="tag tag-deliver" data-tag="deliver"><span>TOKEN STREAM / 74.2K TOK/S</span></div>
+
+        <div class="scene-legend" aria-hidden="true">
+          <span><i class="lg-data"></i>DATA</span>
+          <span><i class="lg-power"></i>POWER</span>
+          <span><i class="lg-cool"></i>COOLANT</span>
+        </div>
+      </div>
+
+      <div class="caption" id="caption">
+        <div class="cap-index"><b id="capNum">01</b><span>/ 06</span></div>
+        <div class="cap-body" id="capBody">
+          <div class="cap-topline"><span class="cap-kicker" id="capKicker">THE REQUEST</span><span class="cap-rule"></span></div>
+          <div class="cap-title">
+            <h2 id="capName">INGEST</h2>
+            <span class="cap-deck" id="capDeck">Every prompt enters through the edge.</span>
+          </div>
+          <p class="cap-copy" id="capCopy">Requests hit the gateway, get authenticated, and are split into shards. The data centre is already waiting for the work.</p>
+        </div>
+        <div class="cap-meta">
+          <span class="meta-label">NOW IN HALL B</span>
+          <span class="meta-value" id="capMeta">EDGE / 18.6K RPS</span>
+        </div>
+      </div>
+    </main>
+
+    <aside class="sidebar" aria-label="Live telemetry">
+      <section class="panel">
+        <div class="panel-head">
+          <span>TELEMETRY</span>
+          <span class="live"><i></i>STREAMING</span>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">TOTAL POWER</div>
+            <div class="stat-value" id="statPower">8.42<small>MW</small></div>
+            <div class="stat-foot">LIMIT 10.0 MW</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">POWER EFFECTIVENESS</div>
+            <div class="stat-value" id="statPue">1.08</div>
+            <div class="stat-foot">PUE · TARGET 1.10</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">RACK INLET</div>
+            <div class="stat-value" id="statInlet">18.4<small>°C</small></div>
+            <div class="stat-foot">COLD AISLE</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">RACK OUTLET</div>
+            <div class="stat-value" id="statOutlet">45.2<small>°C</small></div>
+            <div class="stat-foot">HOT AISLE</div>
+          </div>
+        </div>
+
+        <div class="chart-head">
+          <span class="chart-title">GPU UTILISATION / 60 S</span>
+          <span class="chart-now" id="chartNow">96.4<small>%</small></span>
+        </div>
+        <div class="chart-wrap" id="chartWrap">
+          <canvas id="utilChart" role="img" aria-label="GPU utilisation over the last 60 seconds, currently 96.4 percent"></canvas>
+          <div class="chart-tip" id="chartTip"></div>
+        </div>
+      </section>
+
+      <section class="panel rack-panel">
+        <div class="panel-head">
+          <span>RACK 14 / 42U</span>
+          <span class="quiet">8 × HBM3</span>
+        </div>
+        <div class="rack-wrap">
+          <div class="rack" aria-hidden="true">
+            <div class="rack-slot net"></div>
+            <div class="rack-slot net"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot gpu"></div>
+            <div class="rack-slot psu"></div>
+            <div class="rack-slot psu"></div>
+            <div class="rack-manifold"></div>
+          </div>
+          <div class="rack-side">
+            <div>
+              <div class="rack-tag">COMPUTE DENSITY</div>
+              <div class="rack-big" id="rackUtil">96<small>%</small></div>
+              <div class="rack-meta">
+                <b id="rackWatts">12.4</b> kW<br>
+                8 × 80 GB HBM<br>
+                3.1 TB/s per GPU
+              </div>
+            </div>
+            <div>
+              <div class="temp-bar"><i></i></div>
+              <div class="temp-row"><span>IN 18.4°</span><span>OUT 45.2°</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-head">
+          <span>EVENT STREAM</span>
+          <span class="live"><i></i>LIVE</span>
+        </div>
+        <div class="log-list" id="logList" role="log" aria-live="polite" aria-label="Data centre event stream"></div>
+      </section>
+    </aside>
+  </div>
+
+  <nav class="chapters" id="chapters" aria-label="Auto tour chapters">
+    <div class="tour-control">
+      <button class="play playing" id="playBtn" aria-label="Pause auto tour"></button>
+      <div class="tour-meta">
+        <div class="tour-title">AUTO TOUR / 06</div>
+        <div class="tour-sub" id="tourSub">CH. 01 <span>/ 00:16</span></div>
+      </div>
+    </div>
+    <button class="chapter active" data-index="0" aria-current="step">
+      <span class="num">01</span><span class="name">INGEST</span><span class="sub">EDGE GATEWAY</span><span class="arrow">→</span>
+    </button>
+    <button class="chapter" data-index="1">
+      <span class="num">02</span><span class="name">ROUTE</span><span class="sub">LEAF / SPINE</span><span class="arrow">→</span>
+    </button>
+    <button class="chapter" data-index="2">
+      <span class="num">03</span><span class="name">COMPUTE</span><span class="sub">GPU RACKS</span><span class="arrow">→</span>
+    </button>
+    <button class="chapter" data-index="3">
+      <span class="num">04</span><span class="name">COOL</span><span class="sub">LIQUID LOOP</span><span class="arrow">→</span>
+    </button>
+    <button class="chapter" data-index="4">
+      <span class="num">05</span><span class="name">POWER</span><span class="sub">54V DC BUS</span><span class="arrow">→</span>
+    </button>
+    <button class="chapter" data-index="5">
+      <span class="num">06</span><span class="name">DELIVER</span><span class="sub">TOKEN STREAM</span><span class="arrow">→</span>
+    </button>
+  </nav>
+</div>
+
+<script>
+'use strict';
+
+/* ------------------------------------------------------------------
+   NIMBUS / AI DC-04 — a self-running, dependency-free cutaway.
+   ------------------------------------------------------------------ */
+
+const CHAPTERS = [
+  {
+    name:'INGEST', kicker:'THE REQUEST', deck:'Every prompt enters through the edge.',
+    copy:'Requests hit the gateway, get authenticated, and are split into shards. The data centre is already waiting for the work.',
+    meta:'EDGE / 18.6K RPS', tag:'edge', accent:'#63e6ff', rgb:'99,230,255',
+    focus:[52,82,8]
+  },
+  {
+    name:'ROUTE', kicker:'THE FABRIC', deck:'The fabric spreads the work.',
+    copy:'A non-blocking leaf-spine network fans the request to the right rack. Every token becomes a tiny message on a 400G link.',
+    meta:'FABRIC / 400G · 0.8 µs', tag:'net', accent:'#8a9dff', rgb:'138,157,255',
+    focus:[12,77,8]
+  },
+  {
+    name:'COMPUTE', kicker:'THE MATRIX', deck:'The matrix becomes a token.',
+    copy:'Thousands of GPUs hold the model in HBM and stream matrix maths. One large request can occupy eight chips at once.',
+    meta:'GPU / 1,024 × 80GB HBM', tag:'gpu', accent:'#b8ff66', rgb:'184,255,102',
+    focus:[56,46,16]
+  },
+  {
+    name:'COOL', kicker:'THE HEAT', deck:'Heat is a workload, too.',
+    copy:'Direct-to-chip liquid cooling pulls heat into a warm loop. A CDU then rejects it to a chiller outside the hall.',
+    meta:'COOLING / 45.2°C RETURN', tag:'cool', accent:'#4de3c1', rgb:'77,227,193',
+    focus:[102,12,14]
+  },
+  {
+    name:'POWER', kicker:'THE CURRENT', deck:'Silicon runs on a trickle.',
+    copy:'Medium-voltage feeds become 54V DC at the rack, then 1V at the chip. UPS and flywheels bridge any grid flicker.',
+    meta:'POWER / 54V DC · 8.4 MW', tag:'power', accent:'#ffb35c', rgb:'255,179,92',
+    focus:[12,10,14]
+  },
+  {
+    name:'DELIVER', kicker:'THE STREAM', deck:'The answer streams back.',
+    copy:'Tokens leave the GPU as they are generated. Every hop is timed, sampled, and logged, then returned to the client.',
+    meta:'OUTPUT / 74.2K TOK/S', tag:'deliver', accent:'#ff8fbf', rgb:'255,143,191',
+    focus:[52,82,8]
+  }
+];
+
+const TAU = Math.PI * 2;
+const DURATION = 16000;
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const mix = (a, b, t) => a + (b - a) * t;
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function alpha(hex, a) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function fmtClock(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+function fmtShort(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+/* ------------------------------------------------------------------
+   Isometric scene
+   ------------------------------------------------------------------ */
+class DataCentreScene {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.focus = 0;
+    this.accent = CHAPTERS[0].accent;
+    this.time = 0;
+    this.w = 0;
+    this.h = 0;
+    this.dpr = 1;
+    this.s = 1;
+    this.cx = 0;
+    this.cy = 0;
+    this.rows = [24, 46, 68];
+    this.xs = [26, 33.6, 41.2, 48.8, 56.4, 64, 71.6, 79.2];
+    this.rackW = 6.2;
+    this.rackD = 9.5;
+    this.rackH = 15.5;
+    this.heroX = 56.4;
+    this.heroY = 46;
+    this.resize();
+    window.addEventListener('resize', () => this.resize(), { passive: true });
+    if (window.ResizeObserver) {
+      const wrap = canvas.parentElement;
+      if (wrap) new ResizeObserver(() => this.resize()).observe(wrap);
+    }
+  }
+
+  resize() {
+    const r = this.canvas.getBoundingClientRect();
+    const w = Math.max(1, r.width);
+    const h = Math.max(1, r.height);
+    this.w = w;
+    this.h = h;
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = Math.round(w * this.dpr);
+    this.canvas.height = Math.round(h * this.dpr);
+    this.s = Math.min(w / 225, h / 132);
+    this.cx = w * 0.5;
+    this.cy = h * 0.17;
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+  }
+
+  p(x, y, z = 0) {
+    const s = this.s;
+    return {
+      x: this.cx + (x - y) * 0.98 * s,
+      y: this.cy + (x + y) * 0.46 * s - z * s
+    };
+  }
+
+  mixP(a, b, t) {
+    return { x: mix(a.x, b.x, t), y: mix(a.y, b.y, t) };
+  }
+
+  poly(pts, fill, stroke, lw = 1) {
+    if (!pts || pts.length < 2) return;
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    if (fill) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = lw;
+      ctx.stroke();
+    }
+  }
+
+  line(pts, stroke, lw = 1, dash = null) {
+    if (!pts || pts.length < 2) return;
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+    ctx.setLineDash(dash || []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  box(x, y, z, w, d, h, style = {}) {
+    const A = this.p(x, y, z);
+    const B = this.p(x + w, y, z);
+    const C = this.p(x + w, y + d, z);
+    const D = this.p(x, y + d, z);
+    const At = this.p(x, y, z + h);
+    const Bt = this.p(x + w, y, z + h);
+    const Ct = this.p(x + w, y + d, z + h);
+    const Dt = this.p(x, y + d, z + h);
+
+    this.poly([D, C, Ct, Dt], style.front || '#0b151f', style.stroke, style.lw ?? 1);
+    this.poly([B, C, Ct, Bt], style.side || '#08111a', style.stroke, style.lw ?? 1);
+    this.poly([At, Bt, Ct, Dt], style.top || '#182531', style.topStroke || style.stroke, style.lw ?? 1);
+    return { A, B, C, D, At, Bt, Ct, Dt };
+  }
+
+  draw(now) {
+    const ctx = this.ctx;
+    const t = now / 1000;
+    this.time = t;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.w, this.h);
+    if (this.w < 2 || this.h < 2) return;
+
+    this.drawBackdrop(t);
+    this.drawFloor(t);
+    this.drawBackPlant(t);
+    this.drawRacks(t);
+    this.drawOverhead(t);
+    this.drawEdge(t);
+    this.drawFlows(t);
+    this.drawHeat(t);
+    this.drawFocus(t);
+  }
+
+  drawBackdrop(t) {
+    const ctx = this.ctx;
+    const g = ctx.createRadialGradient(
+      this.w * 0.53, this.h * 0.43, 0,
+      this.w * 0.53, this.h * 0.43, Math.max(this.w, this.h) * 0.55
+    );
+    g.addColorStop(0, alpha(this.accent, 0.065));
+    g.addColorStop(0.45, alpha(this.accent, 0.018));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.w, this.h);
+
+    const ctx2 = this.ctx;
+    for (let i = 0; i < 38; i++) {
+      const x = (i * 97.13 + 17) % this.w;
+      const y = (i * 53.71 + 11) % this.h;
+      const a = 0.035 + 0.045 * (0.5 + 0.5 * Math.sin(t * 0.7 + i * 1.7));
+      ctx2.fillStyle = `rgba(190,225,245,${a})`;
+      ctx2.fillRect(x, y, 1, 1);
+    }
+
+    ctx.strokeStyle = alpha(this.accent, 0.035);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.w * 0.12, this.h * 0.12);
+    ctx.lineTo(this.w * 0.12, this.h * 0.88);
+    ctx.moveTo(this.w * 0.88, this.h * 0.12);
+    ctx.lineTo(this.w * 0.88, this.h * 0.88);
+    ctx.stroke();
+  }
+
+  drawFloor(t) {
+    const ctx = this.ctx;
+    const s = this.s;
+    const top = [this.p(0, 0), this.p(120, 0), this.p(120, 88), this.p(0, 88)];
+
+    const g = ctx.createLinearGradient(0, this.cy, 0, this.cy + 105 * s);
+    g.addColorStop(0, '#0a141d');
+    g.addColorStop(0.55, '#08111a');
+    g.addColorStop(1, '#050a10');
+    this.poly(top, g);
+
+    const frontLeft = [this.p(0, 88), this.p(120, 88), this.p(120, 88, -2.4), this.p(0, 88, -2.4)];
+    const frontRight = [this.p(120, 0), this.p(120, 88), this.p(120, 88, -2.4), this.p(120, 0, -2.4)];
+    this.poly(frontLeft, '#03070b', 'rgba(120,170,200,.10)', 1);
+    this.poly(frontRight, '#020508', 'rgba(120,170,200,.08)', 1);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(top[0].x, top[0].y);
+    for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
+    ctx.closePath();
+    ctx.clip();
+
+    for (let x = 0; x <= 120; x += 8) {
+      this.line([this.p(x, 0), this.p(x, 88)], 'rgba(130,175,205,.045)', 1);
+    }
+    for (let y = 0; y <= 88; y += 8) {
+      this.line([this.p(0, y), this.p(120, y)], 'rgba(130,175,205,.045)', 1);
+    }
+
+    for (const ay of [35, 57]) {
+      const band = [this.p(0, ay - 3.2), this.p(120, ay - 3.2), this.p(120, ay + 3.2), this.p(0, ay + 3.2)];
+      this.poly(band, alpha('#4de3c1', 0.035));
+      this.line([this.p(0, ay), this.p(120, ay)], alpha('#4de3c1', 0.10), 1, [5, 9]);
+    }
+
+    for (const ry of this.rows) {
+      const plinth = [this.p(23, ry - 1.4), this.p(87, ry - 1.4), this.p(87, ry + 10.6), this.p(23, ry + 10.6)];
+      this.poly(plinth, 'rgba(2,5,8,.62)', 'rgba(130,175,205,.05)', 1);
+    }
+
+    this.line([this.p(0, 88), this.p(120, 88)], alpha(this.accent, 0.28), 1.4);
+    this.line([this.p(120, 0), this.p(120, 88)], alpha(this.accent, 0.10), 1);
+    ctx.restore();
+
+    const edge = this.p(0, 88);
+    const g2 = ctx.createRadialGradient(edge.x, edge.y, 0, edge.x, edge.y, 160);
+    g2.addColorStop(0, alpha(this.accent, 0.08));
+    g2.addColorStop(1, alpha(this.accent, 0));
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, edge.y - 100, this.w, 200);
+  }
+
+  drawBackPlant(t) {
+    const ctx = this.ctx;
+    const s = this.s;
+
+    /* power hall — left */
+    const powerBoxes = [
+      [3, 6, 5.2, 8.2, 10],
+      [9.5, 6, 5.2, 8.2, 10],
+      [16, 6, 5.2, 8.2, 10]
+    ];
+    for (let i = 0; i < powerBoxes.length; i++) {
+      const [x, y, w, d, h] = powerBoxes[i];
+      const b = this.box(x, y, 0, w, d, h, {
+        top: '#1c2228', front: '#0d1217', side: '#090d12',
+        stroke: 'rgba(255,179,92,.16)'
+      });
+      this.line([b.D, b.Dt], alpha('#ffb35c', 0.26), 1);
+      for (let k = 0; k < 4; k++) {
+        const f = 0.18 + k * 0.17;
+        const a = this.mixP(b.D, b.Dt, f);
+        const c = this.mixP(b.C, b.Ct, f);
+        this.line([a, c], alpha('#ffb35c', 0.16), 1);
+      }
+      const lamp = this.p(x + w * 0.78, y + d, h * 0.72);
+      ctx.fillStyle = alpha('#ffb35c', 0.55 + 0.25 * Math.sin(t * 1.2 + i));
+      ctx.beginPath();
+      ctx.arc(lamp.x, lamp.y, Math.max(1, s * 0.55), 0, TAU);
+      ctx.fill();
+    }
+
+    /* cooling plant — right */
+    const coolers = [
+      [96.5, 5, 8.5, 10, 11],
+      [106.5, 5, 8.5, 10, 11]
+    ];
+    for (let i = 0; i < coolers.length; i++) {
+      const [x, y, w, d, h] = coolers[i];
+      const b = this.box(x, y, 0, w, d, h, {
+        top: '#14242a', front: '#0a1418', side: '#071014',
+        stroke: 'rgba(77,227,193,.22)'
+      });
+      const c = this.p(x + w / 2, y + d / 2, h);
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.strokeStyle = alpha('#4de3c1', 0.25);
+      ctx.lineWidth = 1;
+      for (let ring = 0; ring < 3; ring++) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, (1.7 + ring * 1.15) * this.s, (0.9 + ring * 0.58) * this.s, 0, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = alpha('#4de3c1', 0.55);
+      const ang = t * 1.2 + i * 1.7;
+      ctx.beginPath();
+      for (let blade = 0; blade < 3; blade++) {
+        const a = ang + blade * TAU / 3;
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a) * 3.6 * this.s, Math.sin(a) * 1.8 * this.s);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* core switch — front left */
+    const core = this.box(7, 75, 0, 12, 6.5, 8.5, {
+      top: '#15202e', front: '#0b1420', side: '#08101a',
+      stroke: 'rgba(122,162,255,.24)'
+    });
+    for (let i = 0; i < 5; i++) {
+      const f = 0.15 + i * 0.17;
+      const a = this.mixP(core.D, core.Dt, f);
+      const c = this.mixP(core.C, core.Ct, f);
+      this.line([a, c], alpha('#7aa2ff', 0.12), 1);
+    }
+    for (let i = 0; i < 7; i++) {
+      const p = this.mixP(this.mixP(core.D, core.C, 0.12), this.mixP(core.Dt, core.Ct, 0.12), 0.25 + i * 0.08);
+      ctx.fillStyle = alpha(i % 3 === 0 ? '#7aa2ff' : '#63e6ff', 0.5);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(1, this.s * 0.35), 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  drawRacks(t) {
+    const s = this.s;
+    for (let ri = 0; ri < this.rows.length; ri++) {
+      const y = this.rows[ri];
+      for (let xi = 0; xi < this.xs.length; xi++) {
+        this.drawRack(this.xs[xi], y, ri, xi, t);
+      }
+    }
+  }
+
+  drawRack(x, y, ri, xi, t) {
+    const ctx = this.ctx;
+    const s = this.s;
+    const w = this.rackW;
+    const d = this.rackD;
+    const h = this.rackH;
+    const hero = (ri === 1 && xi === 4);
+    const hot = this.focus === 2 && (ri === 1 || xi === 4);
+
+    const shadow = [
+      this.p(x + 0.8, y + 1.3, -0.05),
+      this.p(x + w + 1.1, y + 1.3, -0.05),
+      this.p(x + w + 1.1, y + d + 1.3, -0.05),
+      this.p(x + 0.8, y + d + 1.3, -0.05)
+    ];
+    this.poly(shadow, 'rgba(0,0,0,.42)');
+
+    const b = this.box(x, y, 0, w, d, h, {
+      top: hero ? '#20323d' : '#182531',
+      front: hot ? '#102024' : '#0b151f',
+      side: '#08111a',
+      stroke: hot ? alpha(this.accent, 0.34) : 'rgba(130,175,205,.12)',
+      lw: 1
+    });
+
+    /* top vents */
+    for (let k = 0; k < 4; k++) {
+      const yy = y + d * (0.2 + k * 0.2);
+      this.line(
+        [this.p(x + 0.9, yy, h), this.p(x + w - 0.9, yy, h)],
+        hot ? alpha(this.accent, 0.25) : 'rgba(140,185,210,.10)', 1
+      );
+    }
+
+    /* right-hand face vents */
+    for (let k = 0; k < 4; k++) {
+      const f = 0.16 + k * 0.18;
+      const a = this.mixP(b.B, b.Bt, f);
+      const c = this.mixP(b.C, b.Ct, f);
+      this.line([a, c], 'rgba(130,175,205,.055)', 1);
+    }
+
+    /* 12 visible server units on the front */
+    const l0 = this.mixP(b.D, b.C, 0.075);
+    const r0 = this.mixP(b.D, b.C, 0.925);
+    const l1 = this.mixP(b.Dt, b.Ct, 0.075);
+    const r1 = this.mixP(b.Dt, b.Ct, 0.925);
+
+    for (let k = 0; k < 12; k++) {
+      const f0 = 0.065 + k * 0.073;
+      const f1 = f0 + 0.052;
+      const a = this.mixP(l0, l1, f0);
+      const c = this.mixP(r0, r1, f0);
+      const d2 = this.mixP(r0, r1, f1);
+      const e = this.mixP(l0, l1, f1);
+      this.poly(
+        [a, c, d2, e],
+        (k + xi) % 3 === 0 ? 'rgba(24,42,54,.9)' : 'rgba(18,32,43,.9)'
+      );
+
+      const left = this.mixP(a, e, 0.5);
+      const right = this.mixP(c, d2, 0.5);
+      const led = this.mixP(left, right, 0.86);
+      const blink = 0.5 + 0.5 * Math.sin(t * 2.3 + k * 1.7 + xi * 0.9 + ri);
+      let color = '#2f7f72';
+      if (hot) color = this.accent;
+      else if ((k + xi) % 5 === 0) color = '#63e6ff';
+      else if (this.focus === 5 && k % 2 === 0) color = '#ff8fbf';
+      ctx.fillStyle = alpha(color, 0.28 + 0.48 * blink);
+      ctx.beginPath();
+      ctx.arc(led.x, led.y, Math.max(0.9, s * 0.28), 0, TAU);
+      ctx.fill();
+    }
+
+    /* hero rack gets a brighter spine and a top lamp */
+    if (hero || hot) {
+      this.line(
+        [this.mixP(b.D, b.C, 0.075), this.mixP(b.Dt, b.Ct, 0.075)],
+        alpha(this.accent, 0.4), 1.2
+      );
+      const topLamp = this.p(x + w * 0.5, y + d, h + 0.15);
+      ctx.fillStyle = alpha(this.accent, 0.55 + 0.35 * Math.sin(t * 1.6));
+      ctx.beginPath();
+      ctx.arc(topLamp.x, topLamp.y, Math.max(1.2, s * 0.4), 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  drawOverhead(t) {
+    const ctx = this.ctx;
+    const s = this.s;
+
+    /* cooling loop: a continuous circuit above the racks */
+    const pipe = [
+      [103, 11, 11],
+      [103, 11, 27],
+      [23, 11, 27],
+      [23, 68, 27],
+      [86, 68, 27],
+      [86, 11, 27],
+      [86, 11, 22]
+    ];
+    const pts = pipe.map(([x, y, z]) => this.p(x, y, z));
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    this.line(pts, alpha('#4de3c1', 0.16), Math.max(2.4, s * 0.62));
+    this.line(pts, alpha('#4de3c1', 0.06), Math.max(6, s * 1.8));
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.strokeStyle = alpha('#4de3c1', 0.46);
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 10]);
+    ctx.lineDashOffset = -t * 22;
+    ctx.stroke();
+    ctx.restore();
+
+    /* vertical drops into the cold aisles */
+    const drops = [];
+    for (const ry of this.rows) {
+      for (const dx of [26, 56.4, 79.2]) {
+        drops.push([this.p(dx, ry, 27), this.p(dx, ry, 16.3)]);
+      }
+    }
+    for (const [a, b] of drops) {
+      this.line([a, b], alpha('#4de3c1', 0.16), 1);
+      ctx.fillStyle = alpha('#4de3c1', 0.30);
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, Math.max(1, s * 0.32), 0, TAU);
+      ctx.fill();
+    }
+
+    /* structural posts */
+    for (const [px, py] of [[23, 11], [86, 11]]) {
+      this.line([this.p(px, py, 0), this.p(px, py, 27)], 'rgba(120,165,195,.09)', 1);
+    }
+
+    this.drawDotAlong(pts, (t * 0.042) % 1, '#4de3c1', 2.2);
+    this.drawDotAlong(pts, (t * 0.042 + 0.48) % 1, '#4de3c1', 1.4);
+
+    /* a faint hot return line behind the racks */
+    const hotLine = [[23, 14, 26], [86, 14, 26], [86, 14, 23]];
+    const hp = hotLine.map(([x, y, z]) => this.p(x, y, z));
+    this.line(hp, alpha('#ff9a62', 0.07), 1, [3, 7]);
+  }
+
+  drawDotAlong(pts, prog, color, radius = 2) {
+    if (!pts || pts.length < 2) return;
+    const ctx = this.ctx;
+    let total = 0;
+    const lens = [];
+    for (let i = 1; i < pts.length; i++) {
+      const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      lens.push(len);
+      total += len;
+    }
+    if (!total) return;
+    let dist = clamp(prog, 0, 0.999) * total;
+    let seg = 0;
+    while (seg < lens.length - 1 && dist > lens[seg]) {
+      dist -= lens[seg];
+      seg++;
+    }
+    const t = lens[seg] ? dist / lens[seg] : 0;
+    const x = mix(pts[seg].x, pts[seg + 1].x, t);
+    const y = mix(pts[seg].y, pts[seg + 1].y, t);
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawFlow(points, color, speed, count, width, t) {
+    const pts = points.map(([x, y, z]) => this.p(x, y, z));
+    if (pts.length < 2) return;
+    const ctx = this.ctx;
+    this.line(pts, alpha(color, 0.13), width);
+    for (let i = 0; i < count; i++) {
+      this.drawDotAlong(pts, (t * speed + i / count) % 1, color, 1.6);
+    }
+  }
+
+  drawEdge(t) {
+    const b = this.box(47, 81, 0, 9.5, 4.6, 4.8, {
+      top: '#1b2633', front: '#0c1722', side: '#09121b',
+      stroke: alpha('#63e6ff', 0.26)
+    });
+    const ctx = this.ctx;
+    for (let i = 0; i < 6; i++) {
+      const p = this.mixP(
+        this.mixP(b.D, b.C, 0.15 + i * 0.14),
+        this.mixP(b.Dt, b.Ct, 0.15 + i * 0.14),
+        0.42
+      );
+      ctx.fillStyle = alpha(i % 3 === 0 ? '#ffb35c' : '#63e6ff', 0.45 + 0.25 * Math.sin(t * 2 + i));
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.9, this.s * 0.28), 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  drawFlows(t) {
+    const blue = '#7aa2ff';
+    const amber = '#ffb35c';
+    const pink = '#ff8fbf';
+
+    const netPaths = [];
+    for (const ry of this.rows) {
+      netPaths.push([[12, 77, 1], [24, 77, 1], [24, ry, 1], [86, ry, 1]]);
+    }
+    for (let i = 0; i < netPaths.length; i++) {
+      this.drawFlow(netPaths[i], blue, 0.055 + i * 0.008, 4, 1.2, t);
+    }
+
+    /* power: plant -> underfloor tray -> front busbar */
+    this.drawFlow(
+      [[14, 10, 1], [18, 10, 1], [18, 82, 1], [84, 82, 1]],
+      amber, 0.038, 5, 1.5, t
+    );
+    this.drawFlow(
+      [[18, 82, 1], [18, 68, 1], [56, 68, 1], [56, 82, 1]],
+      amber, 0.052, 3, 1, t
+    );
+
+    /* return path from the compute hall back to the edge */
+    this.drawFlow(
+      [[56.4, 46, 4], [56.4, 68, 4], [52, 82, 5]],
+      pink, 0.06, 3, 1.2, t
+    );
+
+    /* coolant make-up flow in the overhead loop */
+    this.drawFlow(
+      [[103, 11, 12], [103, 11, 27], [23, 11, 27], [23, 68, 27], [86, 68, 27]],
+      '#4de3c1', 0.03, 7, 1, t
+    );
+  }
+
+  drawHeat(t) {
+    const ctx = this.ctx;
+    const active = this.focus === 2 || this.focus === 3;
+    for (let i = 0; i < 26; i++) {
+      const phase = (t * 0.075 + i * 0.137) % 1;
+      const x = 29 + ((i * 37) % 55);
+      const y = (i % 2 ? 35 : 57) + Math.sin(t * 0.8 + i) * 1.4;
+      const z = 1.5 + phase * 17;
+      const p = this.p(x, y, z);
+      const a = (1 - phase) * (active ? 0.34 : 0.16);
+      ctx.fillStyle = alpha(i % 3 === 0 ? '#ff6b57' : '#ffb35c', a);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(0.8, this.s * 0.26), 0, TAU);
+      ctx.fill();
+      if (i % 4 === 0) {
+        ctx.strokeStyle = alpha('#ffb35c', a * 0.45);
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y + 3);
+        ctx.lineTo(p.x + Math.sin(t * 1.1 + i) * 2.2, p.y - 7);
+        ctx.stroke();
+      }
+    }
+  }
+
+  drawFocus(t) {
+    const ctx = this.ctx;
+    const f = CHAPTERS[this.focus].focus;
+    const p = this.p(f[0], f[1], f[2]);
+    const radius = (78 + 14 * Math.sin(t * 1.15)) * (this.s / 3.8);
+
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 2.2);
+    g.addColorStop(0, alpha(this.accent, 0.11));
+    g.addColorStop(0.35, alpha(this.accent, 0.035));
+    g.addColorStop(1, alpha(this.accent, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 2.2, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = alpha(this.accent, 0.13);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 0.72, 0, TAU);
+    ctx.stroke();
+
+    if (this.focus === 2) {
+      const extra = [this.p(48.8, 46, 16), this.p(64, 46, 16)];
+      for (const e of extra) {
+        const g2 = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, radius * 0.8);
+        g2.addColorStop(0, alpha(this.accent, 0.055));
+        g2.addColorStop(1, alpha(this.accent, 0));
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, radius * 0.8, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+}
+/* ------------------------------------------------------------------
+   Telemetry sparkline
+   ------------------------------------------------------------------ */
+class UtilChart {
+  constructor(canvas, wrap, tip) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.wrap = wrap;
+    this.tip = tip;
+    this.values = [];
+    this.hover = null;
+    this.accent = CHAPTERS[0].accent;
+    this.seed();
+    this.resize();
+    window.addEventListener('resize', () => this.resize(), { passive: true });
+    canvas.addEventListener('mousemove', e => this.onMove(e));
+    canvas.addEventListener('mouseleave', () => {
+      this.hover = null;
+      this.tip.classList.remove('on');
+      this.draw();
+    });
+    canvas.addEventListener('touchmove', e => {
+      if (e.touches[0]) this.onMove(e.touches[0]);
+    }, { passive: true });
+  }
+
+  seed() {
+    for (let i = 0; i < 60; i++) {
+      const base = 95.6 + Math.sin(i * 0.27) * 1.1 + Math.sin(i * 0.11 + 2) * 0.55;
+      this.values.push(clamp(base + (Math.random() - 0.5) * 0.7, 90, 99.2));
+    }
+  }
+
+  push(v) {
+    this.values.push(v);
+    if (this.values.length > 60) this.values.shift();
+    this.draw();
+  }
+
+  setAccent(hex) {
+    this.accent = hex;
+    this.draw();
+  }
+
+  resize() {
+    const r = this.canvas.getBoundingClientRect();
+    this.w = Math.max(1, r.width);
+    this.h = Math.max(1, r.height);
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.canvas.width = Math.round(this.w * this.dpr);
+    this.canvas.height = Math.round(this.h * this.dpr);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.draw();
+  }
+
+  draw() {
+    const ctx = this.ctx;
+    const w = this.w || 1;
+    const h = this.h || 1;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, w, h);
+
+    const padL = 2;
+    const padR = 2;
+    const padT = 8;
+    const padB = 14;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+    const min = 88;
+    const max = 100;
+    const n = this.values.length;
+    if (!n || plotW <= 0 || plotH <= 0) return;
+
+    const xFor = i => padL + (i / (n - 1)) * plotW;
+    const yFor = v => padT + (1 - (v - min) / (max - min)) * plotH;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(142,176,205,.10)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    for (let k = 0; k < 3; k++) {
+      const y = padT + (plotH * k) / 2;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(w - padR, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    const y90 = yFor(90);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(142,176,205,.18)';
+    ctx.setLineDash([1, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padL, y90);
+    ctx.lineTo(w - padR, y90);
+    ctx.stroke();
+    ctx.restore();
+    ctx.font = '6px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillStyle = 'rgba(120,145,165,.65)';
+    ctx.textAlign = 'left';
+    ctx.fillText('90', padL, y90 - 2);
+
+    const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+    grad.addColorStop(0, alpha(this.accent, 0.20));
+    grad.addColorStop(1, alpha(this.accent, 0));
+
+    ctx.beginPath();
+    ctx.moveTo(xFor(0), yFor(this.values[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(xFor(i), yFor(this.values[i]));
+    ctx.lineTo(xFor(n - 1), padT + plotH);
+    ctx.lineTo(xFor(0), padT + plotH);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(xFor(0), yFor(this.values[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(xFor(i), yFor(this.values[i]));
+    ctx.strokeStyle = this.accent;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = alpha(this.accent, 0.55);
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+    ctx.restore();
+
+    const lastX = xFor(n - 1);
+    const lastY = yFor(this.values[n - 1]);
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 4, 0, TAU);
+    ctx.fillStyle = this.accent;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 2, 0, TAU);
+    ctx.fillStyle = '#0a1219';
+    ctx.fill();
+
+    if (this.hover !== null) {
+      const hx = xFor(this.hover);
+      const hy = yFor(this.values[this.hover]);
+      ctx.save();
+      ctx.strokeStyle = alpha(this.accent, 0.38);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(hx, padT - 2);
+      ctx.lineTo(hx, padT + plotH);
+      ctx.stroke();
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(hx, hy, 4, 0, TAU);
+      ctx.fillStyle = this.accent;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hx, hy, 2, 0, TAU);
+      ctx.fillStyle = '#0a1219';
+      ctx.fill();
+    }
+
+    ctx.font = '6px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.fillStyle = 'rgba(90,115,135,.75)';
+    ctx.textAlign = 'left';
+    ctx.fillText('60s ago', 1, h - 1);
+    ctx.textAlign = 'right';
+    ctx.fillText('now', w - 1, h - 1);
+  }
+
+  onMove(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const padL = 2;
+    const padR = 2;
+    const plotW = Math.max(1, r.width - padL - padR);
+    const ratio = clamp((e.clientX - r.left - padL) / plotW, 0, 1);
+    const n = this.values.length;
+    this.hover = Math.round(ratio * (n - 1));
+    const v = this.values[this.hover];
+    const ago = n - 1 - this.hover;
+    this.tip.textContent = `${ago === 0 ? 'now' : ago + 's ago'} · ${v.toFixed(1)}%`;
+    const padT = 8;
+    const plotH = Math.max(1, r.height - padT - 14);
+    const x = padL + (this.hover / Math.max(1, n - 1)) * plotW;
+    const y = padT + (1 - (v - 88) / 12) * plotH;
+    this.tip.style.left = `${clamp(x, 28, r.width - 28)}px`;
+    this.tip.style.top = `${Math.max(12, y - 3)}px`;
+    this.tip.classList.add('on');
+    this.draw();
+  }
+}
+
+/* ------------------------------------------------------------------
+   App state and tour
+   ------------------------------------------------------------------ */
+const app = document.getElementById('app');
+const scene = new DataCentreScene(document.getElementById('scene'));
+const chart = new UtilChart(
+  document.getElementById('utilChart'),
+  document.getElementById('chartWrap'),
+  document.getElementById('chartTip')
+);
+
+const capNum = document.getElementById('capNum');
+const capKicker = document.getElementById('capKicker');
+const capName = document.getElementById('capName');
+const capDeck = document.getElementById('capDeck');
+const capCopy = document.getElementById('capCopy');
+const capMeta = document.getElementById('capMeta');
+const capBody = document.getElementById('capBody');
+const caption = document.getElementById('caption');
+const chapterEls = $$('.chapter');
+const railDots = $$('.rail-dot');
+const tagEls = $$('.tag');
+const hudNext = document.getElementById('hudNext');
+const tourSub = document.getElementById('tourSub');
+const playBtn = document.getElementById('playBtn');
+const hudPause = document.getElementById('hudPause');
+const clockEl = document.getElementById('clock');
+
+const statPower = document.getElementById('statPower');
+const statPue = document.getElementById('statPue');
+const statInlet = document.getElementById('statInlet');
+const statOutlet = document.getElementById('statOutlet');
+const chartNow = document.getElementById('chartNow');
+const rackUtil = document.getElementById('rackUtil');
+const rackWatts = document.getElementById('rackWatts');
+const logList = document.getElementById('logList');
+
+let chapterIndex = 0;
+let paused = false;
+let startAt = performance.now();
+let pauseAt = 0;
+let pauseTotal = 0;
+
+const telemetry = {
+  power: 8.42,
+  pue: 1.08,
+  inlet: 18.4,
+  outlet: 45.2,
+  gpu: 96.4,
+  watts: 12.4
+};
+
+function elapsed(now) {
+  return paused ? (pauseAt - startAt - pauseTotal) : (now - startAt - pauseTotal);
+}
+
+function setChapter(index, opts = {}) {
+  chapterIndex = clamp(index, 0, CHAPTERS.length - 1);
+  const c = CHAPTERS[chapterIndex];
+  const instant = !!opts.instant;
+
+  app.dataset.chapter = String(chapterIndex);
+  document.documentElement.style.setProperty('--accent', c.accent);
+  document.documentElement.style.setProperty('--accent-rgb', c.rgb);
+  document.documentElement.style.setProperty('--accent-2', c.accent);
+
+  scene.focus = chapterIndex;
+  scene.accent = c.accent;
+  chart.setAccent(c.accent);
+
+  if (!instant) {
+    capBody.classList.remove('swap');
+    void capBody.offsetWidth;
+  }
+  capNum.textContent = String(chapterIndex + 1).padStart(2, '0');
+  capKicker.textContent = c.kicker;
+  capName.textContent = c.name;
+  capDeck.textContent = c.deck;
+  capCopy.textContent = c.copy;
+  capMeta.textContent = c.meta;
+
+  tagEls.forEach(el => el.classList.toggle('on', el.dataset.tag === c.tag));
+  railDots.forEach((el, i) => el.classList.toggle('on', i === chapterIndex));
+  chapterEls.forEach((el, i) => {
+    el.classList.toggle('active', i === chapterIndex);
+    if (i === chapterIndex) {
+      el.setAttribute('aria-current', 'step');
+      el.style.setProperty('--p', '0%');
+    } else {
+      el.removeAttribute('aria-current');
+      el.style.setProperty('--p', '0%');
+    }
+  });
+
+  startAt = performance.now();
+  pauseTotal = 0;
+  if (paused) pauseAt = startAt;
+  if (!instant) {
+    capBody.classList.add('swap');
+  }
+  updateProgress(startAt);
+}
+
+function updateProgress(now) {
+  const e = elapsed(now);
+  const p = clamp(e / DURATION, 0, 1);
+  const pct = `${(p * 100).toFixed(2)}%`;
+
+  const active = chapterEls[chapterIndex];
+  if (active) active.style.setProperty('--p', pct);
+  caption.style.setProperty('--chapter-progress', pct);
+
+  const remain = Math.max(0, DURATION - e);
+  const secs = Math.ceil(remain / 1000);
+  const mm = Math.floor(secs / 60);
+  const ss = String(secs % 60).padStart(2, '0');
+  const timeStr = `${String(mm).padStart(2, '0')}:${ss}`;
+
+  hudNext.textContent = timeStr;
+  tourSub.innerHTML = `CH. ${String(chapterIndex + 1).padStart(2, '0')} <span>/ ${timeStr}</span>`;
+}
+
+function setPaused(next) {
+  if (next === paused) return;
+  const now = performance.now();
+  if (next) {
+    paused = true;
+    pauseAt = now;
+  } else {
+    paused = false;
+    pauseTotal += now - pauseAt;
+  }
+  playBtn.classList.toggle('playing', !paused);
+  hudPause.classList.toggle('play', paused);
+  playBtn.setAttribute('aria-label', paused ? 'Play auto tour' : 'Pause auto tour');
+  hudPause.setAttribute('aria-label', paused ? 'Play auto tour' : 'Pause auto tour');
+  if (!paused) updateProgress(now);
+}
+
+function togglePause() {
+  setPaused(!paused);
+}
+
+function frame(now) {
+  if (!paused && elapsed(now) >= DURATION) {
+    setChapter((chapterIndex + 1) % CHAPTERS.length);
+  }
+  updateProgress(now);
+  scene.draw(now);
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------
+   Live telemetry and events
+   ------------------------------------------------------------------ */
+function updateTelemetry() {
+  telemetry.power = clamp(telemetry.power + (Math.random() - 0.5) * 0.035, 8.05, 8.78);
+  telemetry.pue = clamp(telemetry.pue + (Math.random() - 0.5) * 0.004, 1.06, 1.11);
+  telemetry.inlet = clamp(telemetry.inlet + (Math.random() - 0.5) * 0.12, 17.8, 19.2);
+  telemetry.outlet = clamp(telemetry.outlet + (Math.random() - 0.5) * 0.22, 44.0, 46.4);
+  telemetry.gpu = clamp(telemetry.gpu + (Math.random() - 0.5) * 0.72, 91.8, 99.3);
+  telemetry.watts = clamp(telemetry.watts + (Math.random() - 0.5) * 0.08, 11.7, 13.2);
+
+  statPower.innerHTML = `${telemetry.power.toFixed(2)}<small>MW</small>`;
+  statPue.textContent = telemetry.pue.toFixed(2);
+  statInlet.innerHTML = `${telemetry.inlet.toFixed(1)}<small>°C</small>`;
+  statOutlet.innerHTML = `${telemetry.outlet.toFixed(1)}<small>°C</small>`;
+  chartNow.innerHTML = `${telemetry.gpu.toFixed(1)}<small>%</small>`;
+  rackUtil.innerHTML = `${Math.round(telemetry.gpu)}<small>%</small>`;
+  rackWatts.textContent = telemetry.watts.toFixed(1);
+
+  chart.push(telemetry.gpu);
+  chart.canvas.setAttribute(
+    'aria-label',
+    `GPU utilisation over the last 60 seconds, currently ${telemetry.gpu.toFixed(1)} percent`
+  );
+}
+
+const EVENTS = [
+  [
+    'Gateway · <b>18.6k req/s</b> admitted',
+    'Auth · session tokens <b>rotated</b>',
+    'Queue · p95 latency <b>11 ms</b>',
+    'Edge · cache hit ratio <b>98.2%</b>'
+  ],
+  [
+    'Fabric · 400G link <b>healthy</b>',
+    'Router · shard map <b>updated</b>',
+    'Fabric · <b>0</b> packet loss',
+    'Leaf-07 · queue depth <b>3</b>'
+  ],
+  [
+    'GPU 07 · HBM <b>3.1 TB/s</b>',
+    'Job 8a2f · step <b>1,204</b>',
+    'Node 14 · util <b>96%</b>',
+    'Router · tensor parallel <b>8-way</b>'
+  ],
+  [
+    'CDU-02 · return <b>45.2°C</b>',
+    'Loop · ΔP <b>1.8 bar</b>',
+    'Chiller · load <b>68%</b>',
+    'CDU-02 · flow <b>412 L/min</b>'
+  ],
+  [
+    'UPS · load <b>62%</b>',
+    'PSU · efficiency <b>96.4%</b>',
+    'Grid · 132 kV <b>stable</b>',
+    'Busbar · ripple <b>0.3%</b>'
+  ],
+  [
+    'Stream · <b>74.2k tokens/s</b>',
+    'Sampler · temperature <b>0.7</b>',
+    'Client · p99 <b>42 ms</b>',
+    'Gateway · keep-alive <b>12.4k</b>'
+  ]
+];
+
+let eventCursor = 0;
+
+function logRow(text, when) {
+  const row = document.createElement('div');
+  row.className = 'log-row new';
+  row.innerHTML = `<span class="log-time">${fmtShort(when)}</span><span class="log-dot"></span><span class="log-text">${text}</span>`;
+  logList.prepend(row);
+  while (logList.children.length > 5) {
+    logList.lastElementChild.remove();
+  }
+}
+
+function seedLog() {
+  const now = Date.now();
+  const initial = [
+    'Gateway · <b>18.6k req/s</b> admitted',
+    'Fabric · 400G link <b>healthy</b>',
+    'GPU 07 · HBM refresh <b>nominal</b>',
+    'CDU-02 · return <b>45.2°C</b>'
+  ];
+  for (let i = initial.length - 1; i >= 0; i--) {
+    logRow(initial[i], new Date(now - (initial.length - i) * 3100));
+  }
+}
+
+function addEvent() {
+  const pool = EVENTS[chapterIndex];
+  logRow(pool[eventCursor % pool.length], new Date());
+  eventCursor++;
+}
+
+/* ------------------------------------------------------------------
+   Wiring
+   ------------------------------------------------------------------ */
+playBtn.addEventListener('click', togglePause);
+hudPause.addEventListener('click', togglePause);
+
+chapterEls.forEach((el, i) => {
+  el.addEventListener('click', () => {
+    if (paused) setPaused(false);
+    setChapter(i, { manual: true });
+  });
+});
+
+window.addEventListener('keydown', e => {
+  if (e.target && /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName)) return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    togglePause();
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    setChapter((chapterIndex + 1) % CHAPTERS.length);
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    setChapter((chapterIndex - 1 + CHAPTERS.length) % CHAPTERS.length);
+  }
+});
+
+function tickClock() {
+  clockEl.textContent = fmtClock(new Date());
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+setChapter(0, { instant: true });
+seedLog();
+updateTelemetry();
+requestAnimationFrame(frame);
+
+setInterval(() => {
+  updateTelemetry();
+}, 1300);
+
+setInterval(() => {
+  if (!paused) addEvent();
+}, 2700);
+
+/* Keep the tour from racing ahead when the tab returns from the background. */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !paused) {
+    const now = performance.now();
+    if (elapsed(now) >= DURATION) setChapter((chapterIndex + 1) % CHAPTERS.length);
+  }
+});
+
+/* A small live response for the caption's progress bar, even before the first frame. */
+requestAnimationFrame(() => updateProgress(performance.now()));
+</script>
+</body>
+</html>

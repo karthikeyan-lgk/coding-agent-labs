@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code: How They Hold & Repair Messages</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: #fff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 300px;
+        }
+        .message-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: background 0.3s;
+            width: 100%;
+        }
+        .button:hover {
+            background: #45a049;
+        }
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        .explainer {
+            margin: 15px 0;
+            font-size: 14px;
+            line-height: 1.4;
+            color: #ddd;
+        }
+        .qr-display {
+            position: absolute;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 250px;
+        }
+        .qr-canvas {
+            border: 2px solid #fff;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        .error-level-selector {
+            margin: 10px 0;
+            display: flex;
+            gap: 5px;
+        }
+        .error-level-btn {
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #fff;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .error-level-btn.active {
+            background: #4CAF50;
+        }
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h2>QR Code Explainer</h2>
+        <div class="explainer">
+            QR codes store data using patterns that can be read even with damage.
+            They include error correction codes that let them "repair" themselves.
+        </div>
+
+        <label for="message">Enter your message:</label>
+        <input type="text" id="message" class="message-input"
+               value="Hello QR Code World!">
+
+        <label>Error Correction Level:</label>
+        <div class="error-level-selector">
+            <button class="error-level-btn active" data-level="L">L (7%)</button>
+            <button class="error-level-btn" data-level="M">M (15%)</button>
+            <button class="error-level-btn" data-level="Q">Q (25%)</button>
+            <button class="error-level-btn" data-level="H">H (30%)</button>
+        </div>
+
+        <button id="generate-btn" class="button">Generate QR Code</button>
+        <button id="simulate-damage-btn" class="button">Simulate Damage & Repair</button>
+
+        <div class="status" id="status">Ready</div>
+    </div>
+
+    <div class="qr-display">
+        <h3>QR Code Preview</h3>
+        <canvas id="qr-canvas" class="qr-canvas" width="200" height="200"></canvas>
+        <div style="margin-top: 10px; font-size: 12px;">
+            <div id="data-size">Data: 0 bytes</div>
+            <div id="error-info">Error Level: M</div>
+            <div id="total-size">Total: 0 bytes</div>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Generating...</div>
+
+    <script>
+        // Import Three.js dynamically
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+        script.onload = init;
+        document.head.appendChild(script);
+
+        let scene, camera, renderer, particles, particleSystem;
+        let message = 'Hello QR Code World!';
+        let errorLevel = 'M';
+        let qrData = null;
+        let animationId = null;
+
+        function init() {
+            const canvas = document.getElementById('canvas');
+
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            // Create ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            // Create point lights
+            const pointLight1 = new THREE.PointLight(0x4CAF50, 2, 100);
+            pointLight1.position.set(10, 10, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0xFF6B6B, 2, 100);
+            pointLight2.position.set(-10, -10, 10);
+            scene.add(pointLight2);
+
+            // Create particle system for QR code visualization
+            const geometry = new THREE.BufferGeometry();
+            const particlesCount = 1000;
+            const posArray = new Float32Array(particlesCount * 3);
+
+            for(let i = 0; i < particlesCount * 3; i++) {
+                posArray[i] = (Math.random() - 0.5) * 20;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.1,
+                color: 0x4CAF50,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            particleSystem = new THREE.Points(geometry, material);
+            scene.add(particleSystem);
+
+            camera.position.z = 30;
+
+            // Event listeners
+            document.getElementById('generate-btn').addEventListener('click', generateQR);
+            document.getElementById('simulate-damage-btn').addEventListener('click', simulateDamage);
+            document.getElementById('message').addEventListener('input', (e) => {
+                message = e.target.value;
+                if (qrData) generateQR();
+            });
+
+            document.querySelectorAll('.error-level-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.error-level-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    errorLevel = e.target.dataset.level;
+                    if (qrData) generateQR();
+                });
+            });
+
+            // Start animation
+            animate();
+
+            // Initial QR generation
+            generateQR();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function generateQR() {
+            showLoading(true);
+
+            // Simulate QR code generation with processing
+            setTimeout(() => {
+                // Simulate encoding process
+                const encoder = new TextEncoder();
+                const data = encoder.encode(message);
+                const dataSize = data.length;
+
+                // Calculate QR code parameters based on error level
+                const errorCorrectionFactors = {
+                    'L': 0.07,
+                    'M': 0.15,
+                    'Q': 0.25,
+                    'H': 0.30
+                };
+
+                const errorOverhead = Math.ceil(dataSize * errorCorrectionFactors[errorLevel]);
+                const totalSize = dataSize + errorOverhead;
+
+                // Generate QR data
+                qrData = {
+                    version: Math.ceil(Math.sqrt(dataSize / 7)),
+                    errorLevel: errorLevel,
+                    data: Array.from(data, byte => byte.toString(16).padStart(2, '0')),
+                    errorCorrection: generateErrorCorrection(data, errorLevel),
+                    dataSize: dataSize,
+                    errorOverhead: errorOverhead,
+                    totalSize: totalSize
+                };
+
+                // Update UI
+                document.getElementById('data-size').textContent = `Data: ${dataSize} bytes`;
+                document.getElementById('error-info').textContent = `Error Level: ${errorLevel} (${errorCorrectionFactors[errorLevel] * 100}%)`;
+                document.getElementById('total-size').textContent = `Total: ${totalSize} bytes`;
+
+                // Draw QR code visualization
+                drawQRCanvas();
+
+                // Update 3D visualization
+                updateParticleSystem();
+
+                playSound('success');
+                showLoading(false);
+
+                document.getElementById('status').textContent = 'QR Code generated successfully!';
+            }, 500);
+        }
+
+        function generateErrorCorrection(data, level) {
+            // Simple error correction simulation
+            const correction = [];
+            const iterations = level === 'H' ? 8 : level === 'Q' ? 6 : level === 'M' ? 4 : 2;
+
+            for(let i = 0; i < iterations; i++) {
+                const checksum = data.reduce((sum, byte, idx) => {
+                    return sum + parseInt(byte, 16) * (idx + 1);
+                }, 0) % 256;
+                correction.push(checksum);
+            }
+
+            return correction;
+        }
+
+        function drawQRCanvas() {
+            const canvas = document.getElementById('qr-canvas');
+            const ctx = canvas.getContext('2d');
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!qrData) return;
+
+            // Draw simplified QR code pattern
+            const moduleSize = 4;
+            const qrSize = qrData.version * 4 + 17;
+            const canvasSize = Math.min(canvas.width, canvas.height);
+            const scale = canvasSize / (qrSize * moduleSize);
+
+            // Draw finder patterns (corners)
+            drawFinderPattern(ctx, 0, 0, moduleSize, scale, qrData.errorLevel);
+            drawFinderPattern(ctx, qrSize * moduleSize - 8 * moduleSize, 0, moduleSize, scale, qrData.errorLevel);
+            drawFinderPattern(ctx, 0, qrSize * moduleSize - 8 * moduleSize, moduleSize, scale, qrData.errorLevel);
+
+            // Draw timing patterns
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+
+            for(let i = 0; i < qrSize; i++) {
+                if(i % 2 === 0) {
+                    // Vertical timing
+                    ctx.fillStyle = i === 6 ? '#000' : '#fff';
+                    ctx.fillRect(6 * moduleSize * scale, i * moduleSize * scale, moduleSize * scale, moduleSize * scale);
+
+                    // Horizontal timing
+                    ctx.fillStyle = i === 6 ? '#000' : '#fff';
+                    ctx.fillRect(i * moduleSize * scale, 6 * moduleSize * scale, moduleSize * scale, moduleSize * scale);
+                }
+            }
+
+            // Draw data modules (simplified)
+            ctx.fillStyle = '#fff';
+            for(let i = 0; i < Math.min(qrData.dataSize / 4, 100); i++) {
+                const row = Math.floor(Math.random() * qrSize);
+                const col = Math.floor(Math.random() * qrSize);
+                if(row > 8 && col > 8 && row < qrSize - 8 && col < qrSize - 8) {
+                    ctx.fillRect(col * moduleSize * scale, row * moduleSize * scale, moduleSize * scale, moduleSize * scale);
+                }
+            }
+
+            // Draw error correction patterns
+            ctx.strokeStyle = '#4CAF50';
+            ctx.lineWidth = 2;
+            qrData.errorCorrection.forEach((checksum, idx) => {
+                const row = qrSize + 2 + (idx % 10) * 2;
+                const col = qrSize + 2 + Math.floor(idx / 10) * 2;
+                ctx.beginPath();
+                ctx.arc(col * moduleSize * scale, row * moduleSize * scale, moduleSize * scale / 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${checksum * 2}, 70%, 50%)`;
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            // Add text
+            ctx.fillStyle = '#4CAF50';
+            ctx.font = '12px Arial';
+            ctx.fillText(`V${qrData.version}`, 10, canvas.height - 10);
+        }
+
+        function drawFinderPattern(ctx, x, y, moduleSize, scale, errorLevel) {
+            const size = 7 * moduleSize;
+
+            // Draw outer square
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x, y, size * scale, size * scale);
+
+            // Draw inner square (black)
+            ctx.fillStyle = '#000';
+            ctx.fillRect(x + moduleSize * scale, y + moduleSize * scale, (size - 2 * moduleSize) * scale, (size - 2 * moduleSize) * scale);
+
+            // Draw corner dots based on error level
+            ctx.fillStyle = '#fff';
+            const pattern = errorLevel === 'H' ? 3 : errorLevel === 'Q' ? 2 : 1;
+
+            for(let i = 0; i < pattern; i++) {
+                for(let j = 0; j < pattern; j++) {
+                    ctx.fillRect(
+                        (x + (i + 1) * moduleSize) * scale,
+                        (y + (j + 1) * moduleSize) * scale,
+                        moduleSize * scale / 2,
+                        moduleSize * scale / 2
+                    );
+                }
+            }
+        }
+
+        function updateParticleSystem() {
+            if (!particleSystem) return;
+
+            const positions = particleSystem.geometry.attributes.position.array;
+            const time = Date.now() * 0.001;
+
+            for(let i = 0; i < positions.length; i += 3) {
+                // Animate particles based on QR data
+                positions[i] = (Math.random() - 0.5) * 20 + Math.sin(time + i * 0.1) * 2;
+                positions[i + 1] = (Math.random() - 0.5) * 20 + Math.cos(time + i * 0.1) * 2;
+                positions[i + 2] = (Math.random() - 0.5) * 20 + Math.sin(time * 2 + i * 0.05) * 2;
+
+                // Add glow effect for error correction areas
+                if (qrData && Math.random() < qrData.errorOverhead / qrData.totalSize * 0.1) {
+                    const brightness = 0.5 + Math.sin(time * 5 + i) * 0.5;
+                    particleSystem.material.color.setHex(0x4CAF50 + Math.floor(brightness * 0x00FF00));
+                } else {
+                    particleSystem.material.color.setHex(0x4CAF50);
+                }
+            }
+
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function simulateDamage() {
+            if (!qrData) {
+                playSound('error');
+                document.getElementById('status').textContent = 'Please generate a QR code first!';
+                return;
+            }
+
+            showLoading(true);
+            document.getElementById('status').textContent = 'Simulating damage and repair...';
+
+            // Simulate damage
+            setTimeout(() => {
+                playSound('damage');
+
+                // Add some "damage" visual effects
+                updateParticleSystem();
+
+                setTimeout(() => {
+                    // Simulate repair process
+                    playSound('repair');
+
+                    // Show repair animation
+                    repairQR();
+
+                    setTimeout(() => {
+                        showLoading(false);
+                        document.getElementById('status').textContent = 'Damage repaired! Error correction saved the message.';
+                    }, 1500);
+                }, 1000);
+            }, 500);
+        }
+
+        function repairQR() {
+            const canvas = document.getElementById('qr-canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Add glitch effect
+            const originalWidth = canvas.width;
+            const originalHeight = canvas.height;
+
+            for(let i = 0; i < 20; i++) {
+                setTimeout(() => {
+                    // Glitch effect
+                    ctx.save();
+                    ctx.translate(Math.random() * 20 - 10, Math.random() * 20 - 10);
+                    ctx.scale(1 + Math.random() * 0.1, 1 + Math.random() * 0.1);
+                    drawQRCanvas();
+                    ctx.restore();
+
+                    if(i === 19) {
+                        // Final restored state
+                        drawQRCanvas();
+                    }
+                }, i * 100);
+            }
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            loading.style.display = show ? 'block' : 'none';
+        }
+
+        function playSound(type) {
+            // Create audio context for sound effects
+            if (!window.audioContext) {
+                window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const ctx = window.audioContext;
+
+            if (type === 'success') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.frequency.setValueAtTime(440, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.2);
+
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.5);
+            } else if (type === 'damage') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(150, ctx.currentTime + 0.5);
+
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.4);
+            } else if (type === 'repair') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                const filter = ctx.createBiquadFilter();
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(600, ctx.currentTime + 0.3);
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(500, ctx.currentTime);
+                filter.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.3);
+
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.6);
+            }
+        }
+
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+
+            // Rotate particle system slowly
+            particleSystem.rotation.y = time * 0.1;
+            particleSystem.rotation.x = Math.sin(time) * 0.1;
+
+            // Add pulsing effect
+            const scale = 1 + Math.sin(time * 2) * 0.1;
+            particleSystem.scale.set(scale, scale, scale);
+
+            // Update particles
+            updateParticleSystem();
+
+            renderer.render(scene, camera);
+        }
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            if (window.audioContext) {
+                window.audioContext.close();
+            }
+        });
+    </script>
+</body>
+</html>

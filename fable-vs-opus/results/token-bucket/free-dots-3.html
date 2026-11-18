@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Token Bucket</title></head>
+<body><canvas id="c"></canvas>
+<script>
+// Token bucket rate limiter visualization
+// Every frame is a pure function of time (performance.now()).
+// No libraries, no animation state, no requestAnimationFrame-driven mutation.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// --- Parameters (pure constants) ---
+const CAPACITY   = 10;          // bucket capacity (max tokens)
+const REFILL     = 2;           // tokens per second added back
+const REQUEST_HZ = 4;           // requests attempted per second
+const PIXELS_PER_TOKEN = 22;    // visual width of one token
+
+// --- Pure state: everything derives from t (ms since load) ---
+function state(t) {
+  const seconds = t / 1000;
+  // Deterministic continuous refill: tokens grow linearly toward CAPACITY.
+  // We seed the bucket at 0 at t=0 so the refill curve is visible from empty.
+  const tokens = Math.min(CAPACITY, REFILL * seconds);
+  // Requests fire on a fixed cadence; each consumes 1 token if available.
+  const requestCount = Math.floor(REQUEST_HZ * seconds);
+  let granted = 0;
+  // Simulate the bucket over the request events (pure, no mutation).
+  let bucket = tokens;
+  for (let i = 0; i < requestCount; i++) {
+    if (bucket >= 1) { bucket -= 1; granted++; }
+  }
+  return { tokens, requestCount, granted, bucket };
+}
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function draw(t) {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  const s = state(t);
+  const cx = W / 2;
+  const barY = H / 2 - 10;
+
+  // Title
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '14px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('TOKEN BUCKET RATE LIMITER', 24, 30);
+  ctx.fillText('t = ' + (t/1000).toFixed(2) + 's', 24, 52);
+
+  // Bucket frame
+  const bw = CAPACITY * PIXELS_PER_TOKEN + 16;
+  const bx = cx - bw / 2;
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx, barY, bw, 30);
+
+  // Tokens inside
+  for (let i = 0; i < CAPACITY; i++) {
+    const filled = i < s.tokens;
+    ctx.fillStyle = filled ? '#3fb950' : '#21262d';
+    ctx.fillRect(bx + 8 + i * PIXELS_PER_TOKEN, barY + 4, PIXELS_PER_TOKEN - 4, 22);
+  }
+
+  // Labels
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '12px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('tokens: ' + s.tokens.toFixed(2) + ' / ' + CAPACITY, 24, barY + 50);
+  ctx.fillText('requests: ' + s.requestCount, 24, barY + 68);
+  ctx.fillText('granted: ' + s.granted, 24, barY + 86);
+  ctx.fillText('dropped: ' + (s.requestCount - s.granted), 24, barY + 104);
+
+  // Legend
+  ctx.fillStyle = '#3fb950';
+  ctx.fillRect(W - 180, 30, 12, 12);
+  ctx.fillStyle = '#8b949e';
+  ctx.fillText('available', W - 162, 41);
+  ctx.fillStyle = '#21262d';
+  ctx.fillRect(W - 180, 52, 12, 12);
+  ctx.fillText('empty slot', W - 162, 63);
+
+  // Pure loop: recompute from time on every frame
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

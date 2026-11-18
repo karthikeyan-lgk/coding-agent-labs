@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RECURSION // THE VIDEO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body { font-family: 'Arial Black', Arial, sans-serif; user-select: none; -webkit-user-select: none; }
+  #app { position: fixed; inset: 0; }
+
+  .seg { position: absolute; inset: 0; opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+  .seg.active { opacity: 1; pointer-events: auto; }
+
+  .cap { position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.4rem; text-align: center; padding: 0 7%; }
+  .cap .big { font-weight: 900; line-height: 1.05; }
+  .cap .sub { font-family: 'Arial Narrow', Arial, sans-serif; font-weight: 400; letter-spacing: .28em; text-transform: uppercase; line-height: 1.5; }
+  .cap .small { position: absolute; bottom: 13%; font-family: 'Arial Narrow', Arial, sans-serif; font-weight: 400; letter-spacing: .22em; text-transform: uppercase; opacity: .85; }
+
+  /* ============ VHS (horror tape) ============ */
+  .seg.vhs { background: #040404; }
+  .seg.vhs .fx.scan { background: repeating-linear-gradient(0deg, rgba(0,0,0,.3) 0 1px, transparent 1px 3px); animation: scan 8s linear infinite; }
+  @keyframes scan { to { background-position: 0 240px; } }
+  .seg.vhs .fx.vig { background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,.92) 100%); }
+  .seg.vhs .cap .big { font-family: 'Arial Narrow', Impact, 'Arial Black', sans-serif; font-weight: 400; color: #e8e8e8; text-transform: uppercase; letter-spacing: .1em; font-size: clamp(2.8rem, 9vw, 7.5rem); text-shadow: 3px 0 rgba(255,0,60,.7), -3px 0 rgba(30,110,255,.7); animation: vhsjit 2.6s steps(2) infinite; }
+  @keyframes vhsjit { 0%,100% { transform: translate(0,0); } 25% { transform: translate(.9px,-.6px); } 50% { transform: translate(-.8px,.5px); } 75% { transform: translate(.7px,.8px); } }
+  .seg.vhs .cap .sub { color: #9a9a9a; font-size: clamp(1rem, 2.6vw, 1.5rem); }
+  .seg.vhs .cap .small { color: #777; font-size: clamp(.75rem, 1.7vw, 1rem); letter-spacing: .3em; animation: vhsjit 1.8s steps(2) infinite; }
+
+  /* ============ CLAY (stop-motion) ============ */
+  .seg.clay { background: radial-gradient(circle at 25% 20%, rgba(255,190,140,.4), transparent 42%), radial-gradient(circle at 78% 82%, rgba(46,16,6,.55), transparent 46%), linear-gradient(155deg, #b5653a, #7c3a1e); }
+  .seg.clay .cap .big { font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe Print', cursive; font-weight: 700; color: #3f1e0c; font-size: clamp(1.9rem, 6.5vw, 4.6rem); animation: clayb 1s ease-in-out infinite alternate; }
+  @keyframes clayb { from { transform: scale(1); } to { transform: scale(1.06,.92); } }
+  .seg.clay .cap .sub { color: #6f3517; }
+  .seg.clay .cap .small { color: #5c2c12; font-family: 'Comic Sans MS', 'Chalkboard SE', 'Segoe Print', cursive; }
+
+  /* ============ SILENT FILM ============ */
+  .seg.silent { background: #000; }
+  .seg.silent::before { content: ''; position: absolute; top: 10vh; left: 0; right: 0; height: 20vh; background: #000; z-index: 2; }
+  .seg.silent .cap .big { font-family: 'Times New Roman', serif; font-weight: 700; color: #f2f2f2; font-size: clamp(2.2rem, 6vw, 4.8rem); letter-spacing: .12em; animation: silvin .9s cubic-bezier(.2,1.4,.4,1) forwards; }
+  @keyframes silvin { from { opacity: 0; transform: scale(.72); } to { opacity: 1; transform: scale(1); } }
+  .seg.silent .cap .sub { font-family: 'Times New Roman', serif; font-style: italic; color: #d8d8d8; font-size: clamp(1.3rem, 3.4vw, 2.4rem); animation: silvin2 1s ease .8s forwards; }
+  @keyframes silvin2 { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+  .seg.silent .cap .small { color: #999; font-family: 'Times New Roman', serif; font-style: italic; animation: silvin2 1.2s ease .4s forwards; }
+
+  /* ============ SYNTHWAVE ============ */
+  .seg.synthwave { background: linear-gradient(180deg, #150326 0%, #3b0f5e 55%, #0c0216 100%); }
+  .seg.synthwave .grid { position: absolute; left: 0; right: 0; bottom: 0; height: 36%; background-image: linear-gradient(rgba(0,255,229,.5) 2px, transparent 2px), linear-gradient(90deg, rgba(0,255,229,.5) 2px, transparent 2px); background-size: 44px 44px; animation: gridm 1.6s linear infinite; }
+  @keyframes gridm { to { background-position: 0 44px, 0 0; } }
+  .seg.synthwave .sun { position: absolute; top: -16%; left: 50%; transform: translateX(-50%); width: 66vmin; height: 66vmin; border-radius: 50%; background: linear-gradient(180deg, #ffe259, #ff2975); box-shadow: 0 0 80px 34px rgba(255,41,117,.45); }
+  .seg.synthwave .sun::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: repeating-linear-gradient(180deg, rgba(0,0,0,.55) 0 16px, transparent 16px 30px); animation: stripes 2.2s linear infinite; }
+  @keyframes stripes { to { background-position: 0 60px; } }
+  .seg.synthwave .cap .big { color: #00fff0; font-family: 'Courier New', monospace; font-weight: 700; letter-spacing: .14em; font-size: clamp(1.9rem, 6vw, 4.6rem); text-shadow: 0 0 12px #00fff0, 0 0 44px #00fff0, 0 0 100px #7a05c9; animation: glowp 2.4s ease-in-out infinite; }
+  @keyframes glowp { 0%,100% { text-shadow: 0 0 8px #00fff0, 0 0 26px #00fff0, 0 0 70px #7a05c9; } 50% { text-shadow: 0 0 16px #00fff0, 0 0 55px #00fff0, 0 0 130px #ff2bd6; } }
+  .seg.synthwave .cap .sub { color: #ff2bd6; font-family: 'Courier New', monospace; font-size: clamp(1rem, 2.8vw, 1.8rem); letter-spacing: .2em; text-shadow: 0 0 10px #ff2bd6, 0 0 34px #ff2bd6; animation: glowp2 2.4s ease-in-out infinite; }
+  @keyframes glowp2 { 0%,100% { text-shadow: 0 0 8px #ff2bd6, 0 0 24px #ff2bd6, 0 0 60px #7a05c9; } 50% { text-shadow: 0 0 16px #ff2bd6, 0 0 50px #ff2bd6, 0 0 110px #00fff0; } }
+  .seg.synthwave .cap .small { color: #b98cff; font-family: 'Courier New', monospace; letter-spacing: .25em; font-size: clamp(.7rem, 1.6vw, 1rem); }
+
+  /* ============ TERMINAL ============ */
+  .seg.terminal { background: #02130b; }
+  .seg.terminal .fx.scan { background: repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px); animation: scan 8s linear infinite; }
+  .seg.terminal .fx.vig { background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.9) 100%); }
+  #term-lines { position: absolute; inset: 0; z-index: 3; display: block; padding: 8% 10%; font-family: 'Courier New', monospace; color: #3dff7a; font-size: clamp(.72rem, 2vw, 1.25rem); line-height: 1.9; white-space: pre; }
+  #term-lines .caret { display: inline-block; width: .55em; height: 1.1em; background: #3dff7a; vertical-align: -0.15em; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ============ LIVE ACTION DRAMA ============ */
+  .seg.drama { background: #000; }
+  .seg.drama::before { content: ''; position: absolute; top: 11vh; left: 0; right: 0; height: 22vh; background: #000; z-index: 2; }
+  .seg.drama .cap .big { font-family: 'Georgia', serif; font-style: italic; font-weight: 700; color: #f5f2ea; font-size: clamp(2rem, 6vw, 4.6rem); animation: dramain 3s ease forwards; }
+  @keyframes dramain { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: scale(1); } }
+  .seg.drama .cap .sub { font-family: 'Georgia', serif; font-style: italic; color: #c9c2b2; font-size: clamp(1.05rem, 2.7vw, 1.6rem); animation: dramain2 3.2s ease .9s forwards; }
+  @keyframes dramain2 { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+  .seg.drama .cap .small { color: #8f887a; font-family: 'Georgia', serif; font-style: italic; letter-spacing: .25em; font-size: clamp(.8rem, 1.8vw, 1.05rem); animation: dramain2 3.2s ease 1.6s forwards; }
+
+  /* ============ META / OUROBOROS ============ */
+  .seg.meta { background: #000; }
+  .seg.meta .ring { position: absolute; top: 50%; left: 50%; width: 54vmin; height: 54vmin; margin: -27vmin 0 0 -27vmin; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; animation: spin 9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .seg.meta .cap .mline { font-family: 'Courier New', monospace; color: #e8e8e8; font-size: clamp(1.05rem, 3.2vw, 2.4rem); letter-spacing: .06em; text-align: center; padding: 0 8%; opacity: 0; animation: metain .7s ease forwards; }
+  @keyframes metain { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ============ FX ============ */
+  #flash { position: fixed; inset: 0; background: #cfcfcf; opacity: 0; pointer-events: none; z-index: 50; }
+  #flash.run { animation: flashf .32s ease-out forwards; }
+  @keyframes flashf { from { opacity: .8; } to { opacity: 0; } }
+  #bar { position: fixed; top: 0; left: 0; height: 3px; width: 0; background: #fff; z-index: 60; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="seg vhs" data-i="0">
+    <div class="fx scan"></div>
+    <div class="fx vig"></div>
+    <div class="cap">
+      <div class="big" data-anim>RECURSION.</div>
+      <div class="sub">a function that calls itself.</div>
+      <div class="small" data-anim>base case = termination</div>
+    </div>
+  </div>
+
+  <div class="seg clay" data-i="1">
+    <div class="cap">
+      <div class="big" data-anim>make a smaller copy of yourself.</div>
+      <div class="sub">and let it call you back.</div>
+      <div class="small" data-anim>start small. think smaller.</div>
+    </div>
+  </div>
+
+  <div class="seg silent" data-i="2">
+    <div class="fx"></div>
+    <div class="cap">
+      <div class="big" data-anim style="animation-delay:.2s">the call</div>
+      <div class="sub">a function asks its younger self a question.</div>
+      <div class="small" data-anim style="animation-delay:.2s">then the return.</div>
+    </div>
+  </div>
+
+  <div class="seg synthwave" data-i="3">
+    <div class="grid"></div>
+    <div class="sun"></div>
+    <div class="cap">
+      <div class="big" data-anim>recursion.exe</div>
+      <div class="sub">stack not found — call yourself anyway.</div>
+      <div class="small" data-anim>stack: infinite?</div>
+    </div>
+  </div>
+
+  <div class="seg terminal" data-i="4">
+    <div class="fx scan"></div>
+    <div class="fx vig"></div>
+    <div id="term-lines"></div>
+  </div>
+
+  <div class="seg drama" data-i="5">
+    <div class="cap">
+      <div class="big" data-anim>it calls itself.</div>
+      <div class="sub">that is all it is.</div>
+      <div class="small" data-anim>in a world of pure functions…</div>
+    </div>
+  </div>
+
+  <div class="seg meta" data-i="6">
+    <div class="ring"></div>
+    <div class="cap">
+      <div class="mline" data-anim>THIS VIDEO EXPLAINS RECURSION.</div>
+      <div class="mline" data-anim style="animation-delay:1s">THIS EXPLANATION EXPLAINS THIS VIDEO.</div>
+      <div class="mline" data-anim style="animation-delay:2s">YOU ARE THE BASE CASE.</div>
+    </div>
+  </div>
+
+</div>
+<div id="flash"></div>
+<div id="bar"></div>
+
+<script>
+const SEGS = [
+  { style: 'vhs',    dur: 5.2 },
+  { style: 'clay',   dur: 5.2 },
+  { style: 'silent', dur: 6.0 },
+  { style: 'synthwave', dur: 5.0 },
+  { style: 'terminal', dur: 6.4 },
+  { style: 'drama',  dur: 5.2 },
+  { style: 'meta',   dur: 6.0 },
+];
+const TERM_FULL = 'function fact(n) {\n  return n * fact(n - 1);\n}\n\n// and again.';
+let idx = 0, startT = 0, timer = null, typing = [];
+
+const app = document.getElementById('app');
+const flashEl = document.getElementById('flash');
+const bar = document.getElementById('bar');
+const termEl = document.getElementById('term-lines');
+
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function restartAnims(){
+  document.querySelectorAll('[data-anim]').forEach(el=>{
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  });
+}
+
+function show(i){
+  idx = i;
+  document.querySelectorAll('.seg').forEach(s=>s.classList.toggle('active', +s.dataset.i === i));
+  startT = performance.now();
+  bar.style.width = '0%';
+  restartAnims();
+  clearTimeout(timer);
+  if(i === 4) startTyping();
+  schedule();
+}
+
+function schedule(){
+  const s = SEGS[idx];
+  timer = setTimeout(()=>{
+    const p = Math.min(1, (performance.now() - startT) / (s.dur * 1000));
+    bar.style.width = (p * 100) + '%';
+    if(p < 1){ schedule(); return; }
+    show((idx + 1) % SEGS.length);
+  }, s.dur * 1000);
+}
+
+function startTyping(){
+  typing.forEach(t=>clearTimeout(t));
+  typing = [];
+  let i = 0;
+  const step = function(){
+    if(i >= TERM_FULL.length){ return; }
+    termEl.innerHTML = esc(TERM_FULL.slice(0, i)) + '<span class="caret"></span>';
+    i++;
+    typing.push(setTimeout(step, 24));
+  };
+  step();
+}
+
+function clearTyping(){
+  typing.forEach(t=>clearTimeout(t));
+  typing = [];
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'ArrowRight') show((idx + 1) % SEGS.length);
+  if(e.key === 'ArrowLeft') show((idx + SEGS.length - 1) % SEGS.length);
+});
+
+show(0);
+</script>
+</body>
+</html>

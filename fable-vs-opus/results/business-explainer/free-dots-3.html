@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observability Labs — AI Coding Tool Benchmarks</title>
+<style>
+:root{
+  --bg:#0b0f14; --orange:#e8743b; --cyan:#3ec7d4; --text:#e6edf3;
+  --muted:#7d8a99; --panel:#131a24;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+}
+.stage{position:relative;width:100vw;height:100vh;overflow:hidden}
+.scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;opacity:0;transform:translateY(24px);transition:opacity .9s ease, transform .9s ease}
+.scene.show{opacity:1;transform:translateY(0)}
+h1{font-size:clamp(40px,8vw,96px);font-weight:800;letter-spacing:-1px;line-height:1.05}
+h2{font-size:clamp(26px,5vw,56px);font-weight:700;letter-spacing:-0.5px}
+p{font-size:clamp(16px,2.2vw,22px);color:var(--muted);max-width:720px;line-height:1.5}
+.tag{font-size:clamp(14px,1.8vw,18px);color:var(--cyan);font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.accent{color:var(--orange)}
+.cyan{color:var(--cyan)}
+.fade-in{opacity:0;transform:translateY(16px);transition:opacity .8s ease,transform .8s ease}
+.fade-in.show{opacity:1;transform:translateY(0)}
+.delay-1{transition-delay:.15s}
+.delay-2{transition-delay:.3s}
+.delay-3{transition-delay:.45s}
+.delay-4{transition-delay:.6s}
+/* problem scene */
+.problem-grid{position:absolute;inset:0;opacity:.18}
+.code-line{font-family:'SF Mono',Consolas,monospace;font-size:13px;color:var(--cyan);opacity:.7}
+/* steps */
+.step-row{display:flex;gap:24px;align-items:center;justify-content:center;flex-wrap:wrap}
+.step{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:220px}
+.step-num{width:56px;height:56px;border-radius:50%;border:2px solid var(--orange);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--orange)}
+.step-title{font-size:18px;font-weight:700}
+.step-desc{font-size:14px;color:var(--muted)}
+.arrow{font-size:28px;color:var(--cyan)}
+/* proof */
+.stat{font-size:clamp(48px,9vw,110px);font-weight:800;color:var(--orange);line-height:1}
+.stat-label{font-size:clamp(14px,1.8vw,18px);color:var(--muted);margin-top:8px}
+/* logo */
+.logo-mark{width:90px;height:90px;border-radius:22px;background:linear-gradient(135deg,var(--orange),var(--cyan));display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#0b0f14;margin-bottom:24px}
+/* bg blobs */
+.blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.25;pointer-events:none}
+.blob.o{background:var(--orange)}
+.blob.c{background:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="stage">
+<!-- SCENE 1: PROBLEM -->
+<section class="scene" id="s1">
+  <div class="blob o" style="width:420px;height:420px;top:-120px;left:-100px"></div>
+  <div class="blob c" style="width:360px;height:360px;bottom:-100px;right:-80px"></div>
+  <div class="tag fade-in">The Problem</div>
+  <h1 class="fade-in delay-1">Your AI coding agent <span class="accent">burns tokens</span> you can't see.</h1>
+  <p class="fade-in delay-2">Claude Code, Copilot, Cursor — they all work. But nobody knows what they actually cost, how long they take, or what they really do behind the scenes.</p>
+  <div class="fade-in delay-3" style="margin-top:36px;font-family:monospace;font-size:13px;color:var(--muted);opacity:.7;line-height:1.8;text-align:left">
+    <div>> build feature auth</div>
+    <div>> ? tokens used</div>
+    <div>> ? time elapsed</div>
+    <div>> ? dollars spent</div>
+    <div style="color:var(--orange)">→ blind faith in every run</div>
+  </div>
+</section>
+<!-- SCENE 2: WHAT I DO -->
+<section class="scene" id="s2" style="justify-content:center;align-items:flex-start;padding-left:8vw;padding_right:8vw">
+  <div class="blob o" style="width:380px;height:380px;top:50%;left:55%;transform:translate(-50%,-50%)"></div>
+  <div class="blob c" style="width:300px;height:300px;top:10%;right:-60px"></div>
+  <div style="max-width:680px;text-align:left">
+    <div class="tag fade-in">What We Do</div>
+    <h2 class="fade-in delay-1" style="margin-top:14px">We put <span class="accent">real lab numbers</span> under the microscope.</h2>
+    <p class="fade-in delay-2" style="margin-top:18px">At <strong style="color:var(--text)">Observability Labs</strong>, we benchmark AI coding tools — Claude Code, Copilot, Cursor and more — measuring tokens burned, dollars spent, and minutes taken on identical real-world tasks.</p>
+    <p class="fade-in delay-3" style="margin-top:12px">So developers stop guessing and <span class="cyan">start knowing</span> what their tools actually do.</p>
+  </div>
+</section>
+<!-- SCENE 3: HOW IT WORKS -->
+<section class="scene" id="s3">
+  <div class="blob c" style="width:400px;height:400px;top:-100px;right:-100px"></div>
+  <div class="blob o" style="width:340px;height:340px;bottom:-80px;left:-80px"></div>
+  <div class="tag fade-in">How It Works</div>
+  <h2 class="fade-in delay-1" style="margin-top:14px">Three steps to <span class="accent">truth</span>.</h2>
+  <div class="step-row fade-in delay-2" style="margin-top:40px;max-width:900px;width:100%">
+    <div class="step"><div class="step-num">1</div><div class="step-title">Run the Task</div><div class="step-desc">Identical real-world coding task fed to each tool</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="step-num">2</div><div class="step-title">Measure Everything</div><div class="step-desc">Tokens, wall-clock time, cost — captured live</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="step-num">3</div><div class="step-title">Publish the Numbers</div><div class="step-desc">Public benchmark data you can trust</div></div>
+  </div>
+</section>
+<!-- SCENE 4: PROOF -->
+<section class="scene" id="s4">
+  <div class="blob o" style="width:480px;height:480px;top:50%;left:50%;transform:translate(-50%,-50%)"></div>
+  <div class="blob c" style="width:260px;height:260px;top:10%;left:10%"></div>
+  <div class="tag fade-in">The Proof</div>
+  <div class="stat fade-in delay-1">3.2×</div>
+  <div class="stat-label fade-in delay-2">average token variance between AI coding tools on the same task</div>
+  <p class="fade-in delay-3" style="margin-top:28px;max-width:640px">Real measurements, not hype. Watch the full benchmarks on our channel and see the numbers for yourself.</p>
+</section>
+<!-- SCENE 5: NAME -->
+<section class="scene" id="s5" style="justify-content:center;align-items:center;text-align:center">
+  <div class="blob o" style="width:420px;height:420px;bottom:-120px;right:-100px"></div>
+  <div class="blob c" style="width:340px;height:340px;top:-100px;left:-80px"></div>
+  <div class="logo-mark fade-in delay-1">OL</div>
+  <h1 class="fade-in delay-2" style="font-size:clamp(48px,10vw,120px)">Observability<span style="color:var(--cyan)">Labs</span></h1>
+  <p class="fade-in delay-3" style="margin-top:18px">AI coding tool benchmarks, measured live.</p>
+  <p class="fade-in delay-4" style="margin-top:6px;color:var(--orange);font-weight:600">YouTube · Observability Labs</p>
+</section>
+
+<script>
+const scenes = document.querySelectorAll('.scene');
+let current = 0;
+function showScene(index){
+  scenes.forEach((s,i)=>{ s.classList.toggle('show', i===index); });
+}
+function next(){ current = (current+1) % scenes.length; showScene(current); }
+showScene(0);
+const timing = [5200, 5800, 6200, 5600, 5000];
+let t = 0;
+const timer = setInterval(()=>{
+  t += 1000;
+  if(t >= timing[current]){ next(); t = 0; }
+}, 1000);
+// click anywhere to advance
+document.querySelector('.stage').addEventListener('click', ()=>{
+  clearInterval(timer);
+  next(); t = 0;
+  timer = setInterval(step, 1000);
+});
+function step(){
+  t += 1000;
+  if(t >= timing[current]){ next(); t = 0; }
+}
+</script>
+</body>
+</html>

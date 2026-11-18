@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Data Center Live View</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a0033 100%);
+            color: #fff;
+            overflow-x: hidden;
+            animation: backgroundPulse 20s ease-in-out infinite;
+        }
+        
+        @keyframes backgroundPulse {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: fadeIn 2s ease-in;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2, #f093fb);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 10px;
+            animation: glow 3s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { text-shadow: 0 0 20px rgba(102, 126, 234, 0.5); }
+            to { text-shadow: 0 0 40px rgba(102, 126, 234, 0.8), 0 0 60px rgba(118, 75, 162, 0.5); }
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            color: #a0a0a0;
+            opacity: 0;
+            animation: fadeIn 2s ease-in 1s forwards;
+        }
+        
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stats-panel {
+            background: rgba(20, 20, 40, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: slideUp 1s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 15px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: scale(1.02);
+        }
+        
+        .stat-label {
+            color: #a0a0a0;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .active {
+            color: #4ade80;
+        }
+        
+        .inactive {
+            color: #f87171;
+        }
+        
+        .data-center-visualization {
+            background: rgba(20, 20, 40, 0.8);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .data-center-visualization::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+            animation: scanline 2s linear infinite;
+        }
+        
+        @keyframes scanline {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(400px); }
+        }
+        
+        .racks-container {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .rack {
+            background: rgba(30, 30, 50, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            border: 2px solid rgba(102, 126, 234, 0.5);
+            min-width: 200px;
+            transition: all 0.5s ease;
+            position: relative;
+        }
+        
+        .rack:hover {
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+        
+        .rack-header {
+            text-align: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .rack-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .rack-subtitle {
+            font-size: 0.9em;
+            color: #a0a0a0;
+        }
+        
+        .servers {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .server {
+            background: linear-gradient(90deg, rgba(30, 30, 30, 0.9), rgba(50, 50, 50, 0.9));
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+            border-left: 4px solid #4b5563;
+            animation: serverPulse 3s ease-in-out infinite;
+        }
+        
+        @keyframes serverPulse {
+            0%, 100% { background-position: 0% 0%; }
+            50% { background-position: 100% 100%; }
+        }
+        
+        .server.active {
+            border-left-color: #4ade80;
+            box-shadow: 0 0 15px rgba(74, 222, 128, 0.5);
+            animation: activeGlow 2s ease-in-out infinite;
+        }
+        
+        @keyframes activeGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(74, 222, 128, 0.5); }
+            50% { box-shadow: 0 0 25px rgba(74, 222, 128, 0.8); }
+        }
+        
+        .server.inference {
+            border-left-color: #60a5fa;
+        }
+        
+        .server.training {
+            border-left-color: #facc15;
+        }
+        
+        .server.name {
+            font-weight: bold;
+            flex: 1;
+        }
+        
+        .server.status {
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            margin: 0 5px;
+        }
+        
+        .status-active {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+        }
+        
+        .status-inference {
+            background: rgba(96, 165, 250, 0.2);
+            color: #60a5fa;
+        }
+        
+        .status-training {
+            background: rgba(250, 204, 21, 0.2);
+            color: #facc15;
+        }
+        
+        .status-idle {
+            background: rgba(107, 114, 128, 0.2);
+            color: #9ca3af;
+        }
+        
+        .server.usage {
+            font-family: monospace;
+            color: #a0a0a0;
+        }
+        
+        .network-traffic {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .traffic-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        
+        .traffic-title {
+            font-size: 1.2em;
+            color: #667eea;
+        }
+        
+        .traffic-gauge {
+            width: 100%;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .traffic-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 15px;
+            width: 0%;
+            animation: trafficFlow 2s ease-in-out infinite;
+            position: relative;
+        }
+        
+        @keyframes trafficFlow {
+            0%, 100% { width: 20%; }
+            50% { width: 80%; }
+        }
+        
+        .traffic-info {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+        }
+        
+        .traffic-metric {
+            flex: 1;
+        }
+        
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .metric-label {
+            font-size: 0.9em;
+            color: #a0a0a0;
+        }
+        
+        .logs-panel {
+            margin-top: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.9em;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4b5563;
+            animation: logFade 0.5s ease-in;
+        }
+        
+        @keyframes logFade {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .log-time {
+            color: #60a5fa;
+        }
+        
+        .log-level {
+            font-weight: bold;
+            margin: 0 10px;
+        }
+        
+        .log-info { border-left-color: #60a5fa; }
+        .log-success { border-left-color: #4ade80; }
+        .log-warning { border-left-color: #facc15; }
+        .log-error { border-left-color: #f87171; }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: 0.5s;
+        }
+        
+        .btn:hover::before {
+            left: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .simulation-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        select {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .racks-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .rack {
+                width: 100%;
+                max-width: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Data Center Control Room</h1>
+            <div class="subtitle">Real-time monitoring and management system</div>
+        </header>
+        
+        <div class="dashboard">
+            <div class="stats-panel">
+                <h3 style="margin-bottom: 15px; color: #667eea;">System Overview</h3>
+                
+                <div class="stat-item">
+                    <span class="stat-label">Total Servers</span>
+                    <span class="stat-value" id="total-servers">0</span>
+                </div>
+                
+                <div class="stat-item">
+                    <span class="stat-label">Active Tasks</span>
+                    <span class="stat-value" id="active-tasks">0</span>
+                </div>
+                
+                <div class="stat-item">
+                    <span class="stat-label">Inference Jobs</span>
+                    <span class="stat-value" id="inference-jobs">0</span>
+                </div>
+                
+                <div class="stat-item">
+                    <span class="stat-label">Training Jobs</span>
+                    <span class="stat-value" id="training-jobs">0</span>
+                </div>
+                
+                <div class="stat-item">
+                    <span class="stat-label">Uptime</span>
+                    <span class="stat-value" id="uptime">00:00:00</span>
+                </div>
+                
+                <div class="stat-item">
+                    <span class="stat-label">Data Center Status</span>
+                    <span class="stat-value active" id="dc-status">ONLINE</span>
+                </div>
+                
+                <div class="simulation-controls">
+                    <button class="btn" onclick="toggleSimulation()" id="sim-btn">Start Simulation</button>
+                    <select id="mode-selector" onchange="changeMode()">
+                        <option value="inference">Inference Mode</option>
+                        <option value="training">Training Mode</option>
+                        <option value="mixed">Mixed Mode</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="data-center-visualization">
+                <div class="racks-container" id="racks-container">
+                    <!-- Racks will be dynamically added here -->
+                </div>
+                
+                <div class="network-traffic">
+                    <div class="traffic-header">
+                        <div class="traffic-title">Network Traffic</div>
+                        <div class="traffic-title">Bandwidth: <span id="bandwidth">0</span> Gbps</div>
+                    </div>
+                    
+                    <div class="traffic-gauge">
+                        <div class="traffic-fill" id="traffic-fill"></div>
+                    </div>
+                    
+                    <div class="traffic-info">
+                        <div class="traffic-metric">
+                            <div class="metric-value" id="inbound">0</div>
+                            <div class="metric-label">Inbound (Gbps)</div>
+                        </div>
+                        <div class="traffic-metric">
+                            <div class="metric-value" id="outbound">0</div>
+                            <div class="metric-label">Outbound (Gbps)</div>
+                        </div>
+                        <div class="traffic-metric">
+                            <div class="metric-value" id="latency">0</div>
+                            <div class="metric-label">Latency (ms)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="logs-panel" id="logs-panel">
+            <div style="color: #667eea; margin-bottom: 10px;">System Logs</div>
+            <div id="logs-container">
+                <!-- Logs will be added here -->
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="addRack()">Add Rack</button>
+            <button class="btn" onclick="emergencyStop()">Emergency Stop</button>
+            <button class="btn" onclick="clearLogs()">Clear Logs</button>
+            <button class="btn" onclick="exportData()">Export Data</button>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        let simulationRunning = false;
+        let currentMode = 'inference';
+        let serverIdCounter = 1;
+        let rackIdCounter = 1;
+        let uptimeStart = new Date();
+        let logCounter = 1;
+        let racks = [];
+        
+        // Initialize the data center
+        function initDataCenter() {
+            addLog('INFO', 'Data center initialized successfully');
+            updateStats();
+            startClock();
+        }
+        
+        // Start uptime clock
+        function startClock() {
+            setInterval(() => {
+                const now = new Date();
+                const elapsed = Math.floor((now - uptimeStart) / 1000);
+                const hours = Math.floor(elapsed / 3600);
+                const minutes = Math.floor((elapsed % 3600) / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('uptime').textContent = 
+                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+        
+        // Add a log entry
+        function addLog(level, message) {
+            const logsContainer = document.getElementById('logs-container');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${level.toLowerCase()}`;
+            logEntry.innerHTML = `
+                <span class="log-time">[${timestamp}]</span>
+                <span class="log-level">${level}:</span>
+                <span class="log-message">${message}</span>
+            `;
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+        
+        // Clear logs
+        function clearLogs() {
+            document.getElementById('logs-container').innerHTML = '';
+            addLog('INFO', 'Logs cleared');
+        }
+        
+        // Update statistics
+        function updateStats() {
+            const totalServers = document.querySelectorAll('.server').length;
+            document.getElementById('total-servers').textContent = totalServers;
+            
+            const activeTasks = document.querySelectorAll('.server.active').length;
+            document.getElementById('active-tasks').textContent = activeTasks;
+            
+            const inferenceJobs = document.querySelectorAll('.server.inference.active').length;
+            document.getElementById('inference-jobs').textContent = inferenceJobs;
+            
+            const trainingJobs = document.querySelectorAll('.server.training.active').length;
+            document.getElementById('training-jobs').textContent = trainingJobs;
+        }
+        
+        // Create a new rack
+        function addRack() {
+            const racksContainer = document.getElementById('racks-container');
+            const rackId = rackIdCounter++;
+            
+            const rack = document.createElement('div');
+            rack.className = 'rack';
+            rack.id = `rack-${rackId}`;
+            rack.innerHTML = `
+                <div class="rack-header">
+                    <div class="rack-title">Rack ${rackId}</div>
+                    <div class="rack-subtitle">Server Cluster</div>
+                </div>
+                <div class="servers" id="servers-${rackId}">
+                    <!-- Servers will be added here -->
+                </div>
+            `;
+            
+            racksContainer.appendChild(rack);
+            racks.push({ id: rackId, element: rack, container: document.getElementById(`servers-${rackId}`) });
+            
+            addLog('SUCCESS', `Rack ${rackId} added to data center`);
+            
+            // Add some servers to the rack
+            if (simulationRunning) {
+                addServersToRack(rackId, Math.floor(Math.random() * 3) + 2);
+            }
+        }
+        
+        // Add servers to a rack
+        function addServersToRack(rackId, count) {
+            const rack = document.getElementById(`servers-${rackId}`);
+            for (let i = 0; i < count; i++) {
+                const serverId = serverIdCounter++;
+                const serverType = Math.random() > 0.5 ? 'inference' : 'training';
+                const status = Math.random() > 0.3 ? 'active' : 'idle';
+                
+                const server = document.createElement('div');
+                server.className = `server ${serverType} ${status}`;
+                server.id = `server-${serverId}`;
+                server.innerHTML = `
+                    <div class="server-name">Server ${serverId}</div>
+                    <div class="server-status status-${status}">${status.toUpperCase()}</div>
+                    <div class="server-usage">CPU: 0% | MEM: 0%</div>
+                `;
+                
+                rack.appendChild(server);
+                
+                // Animate CPU and memory usage
+                animateServerUsage(serverId);
+            }
+        }
+        
+        // Animate server CPU and memory usage
+        function animateServerUsage(serverId) {
+            const server = document.getElementById(`server-${serverId}`);
+            if (!server) return;
+            
+            let cpu = 0;
+            let mem = 0;
+            const interval = setInterval(() => {
+                if (!server) {
+                    clearInterval(interval);
+                    return;
+                }
+                
+                cpu = Math.max(0, cpu + (Math.random() - 0.5) * 20);
+                mem = Math.max(0, mem + (Math.random() - 0.5) * 15);
+                
+                if (server.querySelector('.server-usage')) {
+                    server.querySelector('.server-usage').textContent = 
+                        `CPU: ${Math.floor(cpu)}% | MEM: ${Math.floor(mem)}%`;
+                }
+                
+                if (cpu < 10) cpu = 0;
+                if (mem < 5) mem = 0;
+                
+                // Toggle status occasionally
+                if (Math.random() < 0.02) {
+                    server.classList.toggle('active');
+                    updateStats();
+                }
+            }, 2000);
+        }
+        
+        // Toggle simulation
+        function toggleSimulation() {
+            if (!simulationRunning) {
+                simulationRunning = true;
+                document.getElementById('sim-btn').textContent = 'Stop Simulation';
+                document.getElementById('sim-btn').style.background = 'linear-gradient(45deg, #f87171, #dc2626)';
+                
+                // Auto-add racks
+                const rackInterval = setInterval(() => {
+                    if (simulationRunning) {
+                        addRack();
+                    } else {
+                        clearInterval(rackInterval);
+                    }
+                }, 5000);
+                
+                // Start traffic animation
+                const trafficInterval = setInterval(() => {
+                    if (simulationRunning) {
+                        updateTraffic();
+                    }
+                }, 1000);
+                
+                // Start log entries
+                const logInterval = setInterval(() => {
+                    if (simulationRunning) {
+                        addSystemLog();
+                    }
+                }, 3000);
+                
+                addLog('SUCCESS', 'Simulation started');
+            } else {
+                simulationRunning = false;
+                document.getElementById('sim-btn').textContent = 'Start Simulation';
+                document.getElementById('sim-btn').style.background = 'linear-gradient(45deg, #667eea, #764ba2)';
+                addLog('WARNING', 'Simulation stopped');
+            }
+        }
+        
+        // Change simulation mode
+        function changeMode() {
+            const selector = document.getElementById('mode-selector');
+            currentMode = selector.value;
+            addLog('INFO', `Mode changed to ${currentMode} mode`);
+        }
+        
+        // Update traffic metrics
+        function updateTraffic() {
+            const inbound = Math.floor(Math.random() * 500) + 100;
+            const outbound = Math.floor(Math.random() * 800) + 200;
+            const latency = Math.floor(Math.random() * 50) + 10;
+            const bandwidth = inbound + outbound;
+            
+            document.getElementById('inbound').textContent = inbound;
+            document.getElementById('outbound').textContent = outbound;
+            document.getElementById('latency').textContent = latency;
+            document.getElementById('bandwidth').textContent = bandwidth;
+            
+            const trafficFill = document.getElementById('traffic-fill');
+            const trafficPercent = Math.min(100, (bandwidth / 2000) * 100);
+            trafficFill.style.width = trafficPercent + '%';
+            
+            // Change color based on bandwidth
+            if (trafficPercent > 80) {
+                trafficFill.style.background = 'linear-gradient(90deg, #f87171, #dc2626)';
+            } else if (trafficPercent > 50) {
+                trafficFill.style.background = 'linear-gradient(90deg, #facc15, #f59e0b)';
+            } else {
+                trafficFill.style.background = 'linear-gradient(90deg, #667eea, #764ba2)';
+            }
+        }
+        
+        // Add system log entries
+        function addSystemLog() {
+            const logs = [
+                { level: 'INFO', message: 'Scheduled backup completed successfully' },
+                { level: 'INFO', message: 'GPU utilization at 72%' },
+                { level: 'WARNING', message: 'High memory usage detected on server 12' },
+                { level: 'SUCCESS', message: 'Model inference task completed in 2.3s' },
+                { level: 'INFO', message: 'Network latency within normal parameters' },
+                { level: 'WARNING', message: 'Temperature threshold approaching on rack 3' },
+                { level: 'SUCCESS', message: 'Training checkpoint saved to storage' },
+                { level: 'INFO', message: 'Security scan completed - no threats found' }
+            ];
+            
+            const randomLog = logs[Math.floor(Math.random() * logs.length)];
+            addLog(randomLog.level, randomLog.message);
+        }
+        
+        // Emergency stop
+        function emergencyStop() {
+            simulationRunning = false;
+            document.getElementById('sim-btn').textContent = 'Start Simulation';
+            document.getElementById('sim-btn').style.background = 'linear-gradient(45deg, #667eea, #764ba2)';
+            
+            // Stop all servers
+            document.querySelectorAll('.server').forEach(server => {
+                server.classList.remove('active');
+            });
+            
+            // Clear all racks except the first one (if exists)
+            const racksContainer = document.getElementById('racks-container');
+            const racks = Array.from(racksContainer.children);
+            if (racks.length > 1) {
+                for (let i = 1; i < racks.length; i++) {
+                    racksContainer.removeChild(racks[i]);
+                }
+            }
+            
+            addLog('ERROR', 'EMERGENCY STOP ACTIVATED - All systems halted');
+        }
+        
+        // Export data
+        function exportData() {
+            const data = {
+                timestamp: new Date().toISOString(),
+                racks: racks.length,
+                servers: document.querySelectorAll('.server').length,
+                activeServers: document.querySelectorAll('.server.active').length,
+                currentMode: currentMode,
+                simulationRunning: simulationRunning
+            };
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+            
+            const exportName = `datacenter-status-${Date.now()}.json`;
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportName);
+            linkElement.click();
+            
+            addLog('SUCCESS', `Data exported to ${exportName}`);
+        }
+        
+        // Initialize on page load
+        window.onload = function() {
+            initDataCenter();
+            
+            // Start with one rack already
+            setTimeout(() => {
+                addRack();
+            }, 1000);
+            
+            // Start simulation automatically
+            setTimeout(() => {
+                toggleSimulation();
+            }, 2000);
+        };
+    </script>
+</body>
+</html>
+    "

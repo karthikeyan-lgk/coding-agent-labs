@@ -1,0 +1,1078 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Bucket — a rate limiter explained</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #071018; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="An animated explanation of a token bucket rate limiter"></canvas>
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Canvas-only explainer. There is no DOM UI, no library, and no simulation
+  // state carried between frames: everything below is computed from the current
+  // elapsed time t. (The only constant is the start timestamp.)
+  // ---------------------------------------------------------------------------
+
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+
+  const W = 1440;
+  const H = 900;
+
+  const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+
+  // Dark-mode chart palette. The three categorical hues below pass the dataviz
+  // palette checks against the #071018 surface; rejected is the reserved status
+  // color and is always paired with an X mark and a label.
+  const C = {
+    bg: '#071018',
+    panel: 'rgba(255,255,255,0.028)',
+    panelStrong: 'rgba(11,22,34,0.82)',
+    border: 'rgba(255,255,255,0.10)',
+    borderSoft: 'rgba(255,255,255,0.06)',
+    ink: '#f2f6f8',
+    ink2: '#b8c6d2',
+    muted: '#7f93a4',
+    grid: 'rgba(255,255,255,0.075)',
+    baseline: 'rgba(255,255,255,0.16)',
+    token: '#c98500',
+    tokenHi: '#f0b23c',
+    tokenDeep: '#8a5200',
+    demand: '#3987e5',
+    accepted: '#199e70',
+    rejected: '#d03b3b'
+  };
+
+  // Model parameters.
+  const CAP = 10;          // bucket capacity, tokens
+  const RATE = 3;          // refill rate, tokens per second
+  const CYCLE = 8;         // demand pattern repeats every 8 seconds
+
+  // A burst followed by a trickle. The average is exactly 3 requests/s:
+  // 20 burst requests + 4 trickle requests per 8-second cycle.
+  const OFFSETS = [];
+  for (let i = 0; i < 20; i++) OFFSETS.push(0.10 + i * 0.12);
+  [3.2, 4.8, 6.4, 7.8].forEach(x => OFFSETS.push(x));
+  OFFSETS.sort((a, b) => a - b);
+
+  const FLIGHT = 1.05;     // seconds for a request to reach the gate
+  const START_X = 104;
+  const GATE_X = 690;
+  const LANE_Y = 580;
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const lerp = (a, b, u) => a + (b - a) * u;
+  const easeInOut = u => u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+  const easeOutCubic = u => 1 - Math.pow(1 - u, 3);
+
+  // ---------------------------------------------------------------------------
+  // Tiny canvas helpers
+  // ---------------------------------------------------------------------------
+
+  function rr(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function text(str, x, y, opts = {}) {
+    const {
+      size = 14,
+      weight = 400,
+      color = C.ink,
+      align = 'left',
+      baseline = 'alphabetic',
+      letter = 0,
+      alpha = 1,
+      mono = false
+    } = opts;
+
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    ctx.font = `${weight} ${size}px ${mono ? MONO : FONT}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = letter ? `${letter}px` : '0px';
+    ctx.fillText(str, x, y);
+    ctx.restore();
+  }
+
+  function panel(x, y, w, h, r = 26, strong = false) {
+    ctx.save();
+    rr(x, y, w, h, r);
+    ctx.fillStyle = strong ? C.panelStrong : C.panel;
+    ctx.fill();
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCheckIcon(x, y, size, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.6, size * 0.18);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.36, y + size * 0.02);
+    ctx.lineTo(x - size * 0.06, y + size * 0.32);
+    ctx.lineTo(x + size * 0.40, y - size * 0.34);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawXIcon(x, y, size, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.6, size * 0.18);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.35, y - size * 0.35);
+    ctx.lineTo(x + size * 0.35, y + size * 0.35);
+    ctx.moveTo(x + size * 0.35, y - size * 0.35);
+    ctx.lineTo(x - size * 0.35, y + size * 0.35);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Deterministic token-bucket simulation
+  // ---------------------------------------------------------------------------
+
+  function simulate(until) {
+    const events = [];
+    const maxCycle = Math.ceil((until + 1e-9) / CYCLE) + 1;
+
+    for (let c = 0; c < maxCycle; c++) {
+      for (let i = 0; i < OFFSETS.length; i++) {
+        const s = c * CYCLE + OFFSETS[i];
+        if (s <= until + 1e-9) events.push(s);
+      }
+    }
+
+    // events are already sorted because both cycles and offsets are ascending.
+    const evs = [];
+    let tokens = CAP;
+    let prev = 0;
+    let accepted = 0;
+    let rejected = 0;
+
+    for (let i = 0; i < events.length; i++) {
+      const s = events[i];
+      const before = Math.min(CAP, tokens + RATE * (s - prev));
+      const ok = before >= 1 - 1e-9;
+      let after = before;
+
+      if (ok) {
+        after -= 1;
+        accepted++;
+      } else {
+        rejected++;
+      }
+
+      evs.push({ t: s, before, after, accepted: ok });
+      tokens = after;
+      prev = s;
+    }
+
+    const level = Math.min(CAP, tokens + RATE * (until - prev));
+    return { events: evs, tokens: level, accepted, rejected };
+  }
+
+  function levelAt(events, time) {
+    let tokens = CAP;
+    let prev = 0;
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i];
+      if (e.t > time) break;
+      tokens = Math.min(CAP, tokens + RATE * (e.t - prev));
+      if (e.accepted) tokens -= 1;
+      prev = e.t;
+    }
+    return Math.min(CAP, tokens + RATE * (time - prev));
+  }
+
+  function demandEventsBetween(t0, t1) {
+    const out = [];
+    const c0 = Math.floor(t0 / CYCLE);
+    const c1 = Math.floor(t1 / CYCLE);
+
+    for (let c = c0; c <= c1; c++) {
+      for (let i = 0; i < OFFSETS.length; i++) {
+        const s = c * CYCLE + OFFSETS[i];
+        if (s >= 0 && s >= t0 && s <= t1) out.push(s);
+      }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Background (pre-rendered once; it does not depend on t)
+  // ---------------------------------------------------------------------------
+
+  const bgCanvas = document.createElement('canvas');
+  bgCanvas.width = W;
+  bgCanvas.height = H;
+  const bctx = bgCanvas.getContext('2d');
+
+  (function paintBackground() {
+    bctx.fillStyle = C.bg;
+    bctx.fillRect(0, 0, W, H);
+
+    const glow = bctx.createRadialGradient(720, 110, 0, 720, 110, 900);
+    glow.addColorStop(0, 'rgba(26, 66, 98, 0.34)');
+    glow.addColorStop(0.46, 'rgba(11, 27, 41, 0.16)');
+    glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    bctx.fillStyle = glow;
+    bctx.fillRect(0, 0, W, H);
+
+    bctx.fillStyle = 'rgba(255,255,255,0.045)';
+    for (let x = 32; x < W; x += 36) {
+      for (let y = 32; y < H; y += 36) {
+        bctx.beginPath();
+        bctx.arc(x, y, 1, 0, Math.PI * 2);
+        bctx.fill();
+      }
+    }
+
+    const vignette = bctx.createRadialGradient(720, 450, 260, 720, 450, 920);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.42)');
+    bctx.fillStyle = vignette;
+    bctx.fillRect(0, 0, W, H);
+  })();
+
+  // ---------------------------------------------------------------------------
+  // Bucket + tokens
+  // ---------------------------------------------------------------------------
+
+  function drawCoin(x, y, r, frac) {
+    // Empty slot.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.025)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.085)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    if (frac <= 0) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(1, r - 1.5), 0, Math.PI * 2);
+    ctx.clip();
+
+    const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+    g.addColorStop(0, C.tokenHi);
+    g.addColorStop(0.48, C.token);
+    g.addColorStop(1, C.tokenDeep);
+    ctx.fillStyle = g;
+
+    if (frac >= 1) {
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    } else {
+      const fillTop = y + r - 2 * r * frac;
+      ctx.fillRect(x - r, fillTop, r * 2, r * 2);
+    }
+
+    // Inner ring, glint, and a tiny "T" mark.
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.58, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(62, 36, 0, 0.58)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x - r * 0.28, y - r * 0.31, r * 0.28, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.20)';
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(53, 31, 0, 0.72)';
+    ctx.font = `700 ${Math.max(7, r * 0.42)}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('T', x, y + 0.5);
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r - 0.6, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 205, 112, 0.34)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBucket(cx, top, bottom, tokens) {
+    const w = 250;
+    const h = bottom - top;
+    const x = cx - w / 2;
+
+    // Warm glow behind the bucket.
+    const glow = ctx.createRadialGradient(cx, top + h * 0.45, 10, cx, top + h * 0.45, 190);
+    glow.addColorStop(0, 'rgba(201, 133, 0, 0.12)');
+    glow.addColorStop(1, 'rgba(201, 133, 0, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - 210, top - 40, 420, h + 80);
+
+    // Handle (behind the body).
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx + w / 2 - 2, top + 62);
+    ctx.bezierCurveTo(cx + w / 2 + 54, top + 62, cx + w / 2 + 54, bottom - 62, cx + w / 2 - 2, bottom - 62);
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+
+    // Bucket body.
+    ctx.save();
+    rr(x, top, w, h, 36);
+    const body = ctx.createLinearGradient(x, top, x + w, bottom);
+    body.addColorStop(0, 'rgba(21, 42, 57, 0.97)');
+    body.addColorStop(0.52, 'rgba(12, 26, 38, 0.98)');
+    body.addColorStop(1, 'rgba(7, 17, 26, 0.99)');
+    ctx.fillStyle = body;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Inner glass.
+    const ix = cx - 106;
+    const iy = top + 16;
+    const iw = 212;
+    const ih = h - 30;
+    rr(ix, iy, iw, ih, 24);
+    const inner = ctx.createLinearGradient(ix, iy, ix, iy + ih);
+    inner.addColorStop(0, 'rgba(3, 8, 13, 0.92)');
+    inner.addColorStop(1, 'rgba(5, 12, 18, 0.96)');
+    ctx.fillStyle = inner;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // A very quiet amber wash that tracks the level.
+    const level = clamp01(tokens / CAP);
+    const fillTop = iy + ih * (1 - level);
+    const wash = ctx.createLinearGradient(0, fillTop, 0, iy + ih);
+    wash.addColorStop(0, 'rgba(201, 133, 0, 0.025)');
+    wash.addColorStop(1, 'rgba(201, 133, 0, 0.105)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(ix, fillTop, iw, ih * level);
+
+    // Keep the coins inside the glass.
+    ctx.save();
+    rr(ix, iy, iw, ih, 24);
+    ctx.clip();
+
+    for (let i = 0; i < CAP; i++) {
+      const row = Math.floor(i / 2);
+      const col = i % 2;
+      const coinX = cx - 28 + col * 56;
+      const coinY = bottom - 34 - row * 46;
+      drawCoin(coinX, coinY, 21, clamp01(tokens - i));
+    }
+    ctx.restore();
+
+    // Glass highlight on the left wall.
+    const sheen = ctx.createLinearGradient(ix, iy, ix + 26, iy);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.075)');
+    sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(ix + 8, iy + 12, 22, ih - 24);
+    ctx.restore();
+
+    // Rim.
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, top + 2, w / 2 - 2, 14, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#08131d';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.17)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(cx, top + 4, w / 2 - 20, 9, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#03070b';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.075)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawRefill(t, top) {
+    const x = 360;
+    const topY = 202;
+    const botY = top - 5;
+
+    const beam = ctx.createLinearGradient(0, topY, 0, botY);
+    beam.addColorStop(0, 'rgba(201, 133, 0, 0)');
+    beam.addColorStop(1, 'rgba(201, 133, 0, 0.24)');
+    ctx.fillStyle = beam;
+    ctx.fillRect(x - 1.5, topY, 3, botY - topY);
+
+    const interval = 1 / RATE;
+    for (let k = 0; k < 5; k++) {
+      const phase = ((t / interval) + k / 5) % 1;
+      const y = topY + phase * (botY - topY);
+      const alpha = 0.22 + 0.78 * Math.sin(Math.PI * phase);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = C.tokenHi;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = alpha * 0.25;
+      ctx.fillRect(x - 1, y - 9, 2, 9);
+      ctx.restore();
+    }
+
+    text('REFILL', x + 22, 218, { size: 10, weight: 700, color: C.ink2, letter: 1.4 });
+    text('+3.0 tokens / sec', x + 22, 238, { size: 13, weight: 600, color: C.ink });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Request lane, gate, and packets
+  // ---------------------------------------------------------------------------
+
+  function drawLane(t) {
+    const y = LANE_Y;
+    const laneGrad = ctx.createLinearGradient(START_X, 0, 880, 0);
+    laneGrad.addColorStop(0, 'rgba(57, 135, 229, 0.03)');
+    laneGrad.addColorStop(0.5, 'rgba(57, 135, 229, 0.22)');
+    laneGrad.addColorStop(1, 'rgba(57, 135, 229, 0.03)');
+    ctx.fillStyle = laneGrad;
+    ctx.fillRect(START_X, y - 1, 880 - START_X, 2);
+
+    const spacing = 64;
+    const offset = (t * 36) % spacing;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(57, 135, 229, 0.20)';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    for (let x = START_X + offset; x < 880; x += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y - 5);
+      ctx.lineTo(x + 2, y);
+      ctx.lineTo(x - 4, y + 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    text('INCOMING REQUESTS', START_X, 552, { size: 9.5, weight: 700, color: C.muted, letter: 1.35 });
+    text('SERVED', 850, 552, { size: 9.5, weight: 700, color: C.muted, letter: 1.35, align: 'right' });
+  }
+
+  function drawGate() {
+    const x = GATE_X;
+    const y = LANE_Y;
+
+    // Soft glow in the opening.
+    const glow = ctx.createRadialGradient(x, y, 2, x, y, 60);
+    glow.addColorStop(0, 'rgba(57, 135, 229, 0.16)');
+    glow.addColorStop(1, 'rgba(57, 135, 229, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - 70, y - 75, 140, 150);
+
+    ctx.save();
+    rr(x - 22, y - 58, 7, 116, 3);
+    ctx.fillStyle = 'rgba(160, 190, 210, 0.34)';
+    ctx.fill();
+    rr(x + 15, y - 58, 7, 116, 3);
+    ctx.fill();
+
+    rr(x - 22, y - 62, 44, 7, 3);
+    ctx.fillStyle = 'rgba(160, 190, 210, 0.44)';
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(57, 135, 229, 0.14)';
+    ctx.fillRect(x - 1, y - 50, 2, 100);
+    ctx.restore();
+
+    text('ADMISSION GATE', x, y - 88, { size: 9.5, weight: 700, color: C.muted, letter: 1.35, align: 'center' });
+    text('1 token per request', x, y - 70, { size: 11, weight: 500, color: C.ink2, align: 'center' });
+  }
+
+  function drawPacket(x, y, kind, color, alpha) {
+    if (alpha <= 0) return;
+
+    const w = 34;
+    const h = 22;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 13;
+
+    rr(x - w / 2, y - h / 2, w, h, 7);
+    if (kind === 'request') {
+      ctx.fillStyle = 'rgba(57, 135, 229, 0.17)';
+      ctx.strokeStyle = C.demand;
+    } else if (kind === 'accepted') {
+      ctx.fillStyle = 'rgba(25, 158, 112, 0.22)';
+      ctx.strokeStyle = C.accepted;
+    } else {
+      ctx.fillStyle = 'rgba(208, 59, 59, 0.22)';
+      ctx.strokeStyle = C.rejected;
+    }
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+
+    if (kind === 'request') {
+      ctx.fillStyle = 'rgba(255,255,255,0.76)';
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.arc(x + i * 6, y, 1.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (kind === 'accepted') {
+      drawCheckIcon(x, y, 10, color);
+    } else {
+      drawXIcon(x, y, 10, color);
+    }
+
+    ctx.restore();
+  }
+
+  function qPoint(p0, p1, p2, u) {
+    const v = 1 - u;
+    return {
+      x: v * v * p0.x + 2 * v * u * p1.x + u * u * p2.x,
+      y: v * v * p0.y + 2 * v * u * p1.y + u * u * p2.y
+    };
+  }
+
+  function drawTokenFlow(t, sim) {
+    // A token leaves the bucket and feeds the gate when a request is admitted.
+    const p0 = { x: 418, y: 528 };
+    const p1 = { x: 558, y: 514 };
+    const p2 = { x: GATE_X - 12, y: LANE_Y - 10 };
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(201, 133, 0, 0.10)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+    ctx.stroke();
+
+    const recent = sim.events.filter(e => e.accepted && t - e.t >= 0 && t - e.t < 0.38).slice(-3);
+    for (let i = 0; i < recent.length; i++) {
+      const e = recent[i];
+      const age = t - e.t;
+      const u = clamp01(age / 0.38);
+      const q = qPoint(p0, p1, p2, easeInOut(u));
+
+      ctx.globalAlpha = 1 - u;
+      ctx.fillStyle = C.tokenHi;
+      ctx.shadowColor = C.token;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
+  function drawGateFlash(t, sim) {
+    const last = sim.events.length ? sim.events[sim.events.length - 1] : null;
+    if (!last) return;
+    const age = t - last.t;
+    if (age < 0 || age >= 0.32) return;
+
+    const p = age / 0.32;
+    const color = last.accepted ? C.accepted : C.rejected;
+
+    ctx.save();
+    ctx.globalAlpha = 1 - p;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(GATE_X, LANE_Y, 16 + p * 34, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    text(last.accepted ? '−1' : '×', GATE_X + 36, LANE_Y - 42, {
+      size: 15,
+      weight: 700,
+      color,
+      alpha: 1 - p
+    });
+  }
+
+  function drawRequests(t, sim) {
+    const acceptedMap = new Map();
+    for (let i = 0; i < sim.events.length; i++) {
+      const e = sim.events[i];
+      acceptedMap.set(e.t.toFixed(6), e.accepted);
+    }
+
+    const windowStart = t - 2.4;
+    const windowEnd = t + FLIGHT + 0.1;
+    const arrivals = demandEventsBetween(windowStart, windowEnd);
+
+    for (let i = 0; i < arrivals.length; i++) {
+      const s = arrivals[i];
+      if (t < s - FLIGHT || t > s + 0.65) continue;
+
+      const accepted = acceptedMap.get(s.toFixed(6)) === true;
+      let x;
+      let y;
+      let alpha;
+      let kind;
+      let color;
+
+      if (t < s) {
+        const u = clamp01((t - (s - FLIGHT)) / FLIGHT);
+        x = lerp(START_X, GATE_X - 18, easeInOut(u));
+        y = LANE_Y;
+        alpha = 0.55 + 0.45 * u;
+        kind = 'request';
+        color = C.demand;
+      } else {
+        const age = t - s;
+        const p = clamp01(age / 0.55);
+        if (accepted) {
+          x = GATE_X + easeOutCubic(p) * 190;
+          y = LANE_Y - Math.sin(Math.PI * p) * 8;
+          alpha = 1 - p;
+          kind = 'accepted';
+          color = C.accepted;
+        } else {
+          x = GATE_X - easeOutCubic(p) * 190;
+          y = LANE_Y - Math.sin(Math.PI * p) * 20;
+          alpha = 1 - p;
+          kind = 'rejected';
+          color = C.rejected;
+        }
+      }
+
+      drawPacket(x, y, kind, color, alpha);
+    }
+
+    drawGateFlash(t, sim);
+    drawTokenFlow(t, sim);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Header
+  // ---------------------------------------------------------------------------
+
+  function drawStatCard(x, y, w, label, value, dotColor) {
+    ctx.save();
+    rr(x, y, w, 64, 16);
+    ctx.fillStyle = 'rgba(255,255,255,0.025)';
+    ctx.fill();
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x + w - 14, y + 15, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = dotColor;
+    ctx.fill();
+    ctx.restore();
+
+    text(label, x + 14, y + 19, { size: 8.5, weight: 700, color: C.muted, letter: 1.25 });
+    text(value, x + 14, y + 47, { size: 20, weight: 700, color: C.ink });
+  }
+
+  function drawHeader(t, sim) {
+    text('RATE LIMITER  ·  TOKEN BUCKET', 64, 54, {
+      size: 10.5,
+      weight: 700,
+      color: C.muted,
+      letter: 2.2
+    });
+
+    text('The token bucket.', 64, 108, {
+      size: 44,
+      weight: 700,
+      color: C.ink
+    });
+
+    text('Bursts pass while tokens last. The refill rate caps the average.', 64, 142, {
+      size: 16,
+      weight: 400,
+      color: C.ink2
+    });
+
+    const tokensText = sim.tokens.toFixed(1) + ' / 10';
+    drawStatCard(1008, 44, 116, 'TOKENS NOW', tokensText, C.token);
+    drawStatCard(1136, 44, 116, 'ACCEPTED', String(sim.accepted), C.accepted);
+    drawStatCard(1264, 44, 112, 'REJECTED', String(sim.rejected), C.rejected);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Right-hand explanation
+  // ---------------------------------------------------------------------------
+
+  function drawRightPanel(t, sim) {
+    panel(928, 180, 448, 468, 28);
+
+    text('THE RULE', 960, 216, { size: 9.5, weight: 700, color: C.muted, letter: 1.6 });
+    text('Spend a token to pass.', 960, 248, { size: 25, weight: 700, color: C.ink });
+
+    // Formula card.
+    const fx = 960;
+    const fy = 272;
+    const fw = 384;
+    const fh = 122;
+
+    ctx.save();
+    rr(fx, fy, fw, fh, 18);
+    ctx.fillStyle = C.panelStrong;
+    ctx.fill();
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(201, 133, 0, 0.55)';
+    ctx.fillRect(fx + 18, fy, 48, 2);
+    ctx.restore();
+
+    text('tokens ≥ 1', fx + 24, fy + 36, { size: 20, weight: 700, color: C.ink });
+    drawCheckIcon(fx + 34, fy + 63, 11, C.accepted);
+    text('admit request  ·  −1 token', fx + 50, fy + 68, { size: 14, weight: 500, color: C.ink2 });
+
+    drawXIcon(fx + 34, fy + 93, 11, C.rejected);
+    text('reject request', fx + 50, fy + 98, { size: 14, weight: 500, color: C.ink2 });
+
+    drawCoin(fx + fw - 48, fy + 60, 22, 1);
+
+    // Bullet list.
+    const bx = 978;
+    const tx = 996;
+    const bullets = [
+      { y: 424, kind: 'token', label: 'Refill adds tokens at 3 / sec.' },
+      { y: 452, kind: 'cap', label: 'The bucket holds at most 10 tokens.' },
+      { y: 480, kind: 'spend', label: 'Each admitted request spends one.' },
+      { y: 508, kind: 'reject', label: 'Empty bucket → reject, don’t queue.' }
+    ];
+
+    for (let i = 0; i < bullets.length; i++) {
+      const b = bullets[i];
+      if (b.kind === 'token') {
+        drawCoin(bx, b.y - 4, 5.5, 1);
+      } else if (b.kind === 'cap') {
+        ctx.save();
+        ctx.strokeStyle = C.demand;
+        ctx.lineWidth = 1.5;
+        rr(bx - 6, b.y - 11, 12, 14, 3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(bx - 6, b.y - 7);
+        ctx.lineTo(bx + 6, b.y - 7);
+        ctx.stroke();
+        ctx.restore();
+      } else if (b.kind === 'spend') {
+        drawCoin(bx, b.y - 4, 5.5, 1);
+      } else {
+        drawXIcon(bx, b.y - 4, 9, C.rejected);
+      }
+      text(b.label, tx, b.y, { size: 14, weight: 400, color: C.ink2 });
+    }
+
+    ctx.save();
+    ctx.strokeStyle = C.borderSoft;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(984, 548);
+    ctx.lineTo(1320, 548);
+    ctx.stroke();
+    ctx.restore();
+
+    text('BURST ALLOWANCE', 984, 572, { size: 9.5, weight: 700, color: C.muted, letter: 1.2 });
+    text('10 tokens', 984, 596, { size: 18, weight: 700, color: C.ink });
+
+    text('SUSTAINED LIMIT', 1168, 572, { size: 9.5, weight: 700, color: C.muted, letter: 1.2 });
+    text('3 tokens / sec', 1168, 596, { size: 18, weight: 700, color: C.ink });
+
+    text('Bursts are bounded by B; average is bounded by r.', 984, 624, {
+      size: 11.5,
+      weight: 400,
+      color: C.ink2
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Timeline chart
+  // ---------------------------------------------------------------------------
+
+  function drawChartLegend() {
+    const lx = 1010;
+
+    ctx.save();
+    ctx.strokeStyle = C.token;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(lx, 691);
+    ctx.lineTo(lx + 20, 691);
+    ctx.stroke();
+    ctx.restore();
+    text('tokens', lx + 26, 696, { size: 10, weight: 500, color: C.ink2 });
+
+    ctx.save();
+    ctx.fillStyle = C.accepted;
+    ctx.fillRect(lx + 92, 686, 2, 10);
+    ctx.beginPath();
+    ctx.arc(lx + 93, 686, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    text('admitted', lx + 102, 696, { size: 10, weight: 500, color: C.ink2 });
+
+    drawXIcon(lx + 184, 691, 8, C.rejected);
+    text('rejected', lx + 194, 696, { size: 10, weight: 500, color: C.ink2 });
+  }
+
+  function drawChart(t, sim) {
+    panel(64, 668, 1312, 184, 24);
+
+    text('TOKEN LEVEL', 100, 696, { size: 9.5, weight: 700, color: C.muted, letter: 1.45 });
+    text('last 16 s', 205, 696, { size: 9.5, weight: 400, color: C.muted });
+    text('t = ' + t.toFixed(1) + ' s', 880, 696, { size: 9.5, weight: 400, color: C.muted, align: 'right' });
+
+    drawChartLegend();
+
+    const x0 = 100;
+    const x1 = 1330;
+    const y0 = 716;
+    const y1 = 800;
+    const chartStart = Math.max(0, t - 16);
+    const span = Math.max(1e-6, t - chartStart);
+
+    const mapX = tt => x0 + ((tt - chartStart) / span) * (x1 - x0);
+    const mapY = level => y1 - (level / CAP) * (y1 - y0);
+
+    // Grid and y labels.
+    for (let i = 0; i < 3; i++) {
+      const value = i * 5;
+      const y = mapY(value);
+      ctx.save();
+      ctx.strokeStyle = C.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x1, y);
+      ctx.stroke();
+      ctx.restore();
+      text(String(value), x0 - 10, y + 3, { size: 9, weight: 400, color: C.muted, align: 'right' });
+    }
+
+    // Build the exact level path from the deterministic event list.
+    const startLevel = levelAt(sim.events, chartStart);
+    const pts = [[chartStart, startLevel]];
+
+    for (let i = 0; i < sim.events.length; i++) {
+      const e = sim.events[i];
+      if (e.t <= chartStart || e.t > t) continue;
+      pts.push([e.t, e.before]);
+      if (e.accepted) pts.push([e.t, e.after]);
+    }
+    pts.push([t, sim.tokens]);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0 - 2, y0 - 12, x1 - x0 + 4, y1 - y0 + 30);
+    ctx.clip();
+
+    // Area fill.
+    ctx.beginPath();
+    ctx.moveTo(mapX(pts[0][0]), mapY(pts[0][1]));
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(mapX(pts[i][0]), mapY(pts[i][1]));
+    }
+    ctx.lineTo(mapX(t), y1);
+    ctx.lineTo(mapX(chartStart), y1);
+    ctx.closePath();
+
+    const fill = ctx.createLinearGradient(0, y0, 0, y1);
+    fill.addColorStop(0, 'rgba(201, 133, 0, 0.16)');
+    fill.addColorStop(1, 'rgba(201, 133, 0, 0.012)');
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    // Line.
+    ctx.beginPath();
+    ctx.moveTo(mapX(pts[0][0]), mapY(pts[0][1]));
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(mapX(pts[i][0]), mapY(pts[i][1]));
+    }
+    ctx.strokeStyle = C.token;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(201, 133, 0, 0.35)';
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.restore();
+
+    // Request outcome ticks, below the plot.
+    for (let i = 0; i < sim.events.length; i++) {
+      const e = sim.events[i];
+      if (e.t < chartStart || e.t > t) continue;
+      const ex = mapX(e.t);
+      if (e.accepted) {
+        ctx.save();
+        ctx.fillStyle = C.accepted;
+        ctx.fillRect(ex - 1, y1 + 6, 2, 10);
+        ctx.beginPath();
+        ctx.arc(ex, y1 + 6, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        drawXIcon(ex, y1 + 11, 5, C.rejected);
+      }
+    }
+
+    // Current value dot and direct label.
+    const cx = mapX(t);
+    const cy = mapY(sim.tokens);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = C.bg;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = C.tokenHi;
+    ctx.fill();
+    ctx.restore();
+
+    text(sim.tokens.toFixed(1), cx - 10, cy - 10, {
+      size: 11,
+      weight: 700,
+      color: C.ink,
+      align: 'right'
+    });
+
+    // X labels.
+    const mid = (chartStart + t) / 2;
+    const leftLabel = chartStart <= 0.01 ? '0s' : chartStart.toFixed(0) + 's';
+    text(leftLabel, x0, 838, { size: 9, weight: 400, color: C.muted, align: 'left' });
+    text(mid.toFixed(0) + 's', (x0 + x1) / 2, 838, { size: 9, weight: 400, color: C.muted, align: 'center' });
+    text('now', x1, 838, { size: 9, weight: 400, color: C.muted, align: 'right' });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scene composition
+  // ---------------------------------------------------------------------------
+
+  function drawScene(t, sim) {
+    drawHeader(t, sim);
+
+    // Left explainer panel.
+    panel(64, 180, 848, 468, 28);
+
+    text('TOKEN BUCKET', 104, 214, { size: 9.5, weight: 700, color: C.muted, letter: 1.5 });
+    text('10 token capacity', 104, 238, { size: 13, weight: 500, color: C.ink2 });
+    text(sim.tokens.toFixed(1) + ' / 10', 872, 214, { size: 13, weight: 700, color: C.ink, align: 'right' });
+
+    drawRefill(t, 260);
+    drawBucket(360, 260, 540, sim.tokens);
+
+    drawLane(t);
+    drawGate();
+    drawRequests(t, sim);
+
+    // Right explanation.
+    drawRightPanel(t, sim);
+
+    // Timeline.
+    drawChart(t, sim);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resize + animation
+  // ---------------------------------------------------------------------------
+
+  let dpr = 1;
+  let cssW = 0;
+  let cssH = 0;
+
+  function resize() {
+    dpr = Math.min(2.5, window.devicePixelRatio || 1);
+    cssW = window.innerWidth;
+    cssH = window.innerHeight;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+  }
+
+  function render(t) {
+    const sim = simulate(t);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    // Letterbox with the same page color.
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    const scale = Math.min(cssW / W, cssH / H);
+    const ox = (cssW - W * scale) / 2;
+    const oy = (cssH - H * scale) / 2;
+
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.clip();
+
+    ctx.drawImage(bgCanvas, 0, 0);
+    drawScene(t, sim);
+
+    ctx.restore();
+  }
+
+  const start = performance.now();
+
+  function loop(now) {
+    const t = Math.max(0, (now - start) / 1000);
+    render(t);
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

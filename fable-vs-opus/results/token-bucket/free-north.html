@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Token Bucket Rate Limiter - Pure Time-Based Canvas Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        canvas {
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            display: block;
+            margin: 30px auto;
+            background: #fafbfc;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #f56565 0%, #e53e71 100%);
+        }
+
+        button.stop:hover {
+            background: linear-gradient(135deg, #e53e71 0%, #c53030 100%);
+        }
+
+        .info {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 30px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .info p {
+            margin: 8px 0;
+            color: #475569;
+            line-height: 1.6;
+        }
+
+        .info p:first-child {
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        h1 {
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <h1>Token Bucket Rate Limiter - Canvas Demo</h1>
+
+    <canvas id="rateLimiterCanvas" width="800" height="400"></canvas>
+
+    <div class="controls">
+        <button onclick="startAnimation()">Start</button>
+        <button onclick="stopAnimation()" class="stop">Stop</button>
+        <button onclick="resetSimulation()">Reset</button>
+        <button onclick="takeScreenshot()">Screenshot</button>
+    </div>
+
+    <div class="info">
+        <p>Animation is a pure function of time - each frame depends only on elapsed time</p>
+        <p>Can be screen-captured at any point to get consistent states</p>
+        <p>Requests follow token bucket algorithm: bursts allowed, rate limited average</p>
+    </div>
+
+    <script>
+        // Token Bucket Rate Limiter Implementation
+        // Each frame is a pure function of time - no side effects outside the class
+        class TokenBucket {
+            constructor(capacity = 10, refillRate = 1.0, initialTokens = 0) {
+                this.capacity = capacity;
+                this.tokens = initialTokens;
+                this.refillRate = refillRate; // tokens per second
+                this.lastRefill = Date.now();
+                this.history = [];
+            }
+
+            // Pure function: time is input, state is output
+            // No hidden state - all calculations based on input time parameter
+            request(time) {
+                // Calculate tokens based purely on elapsed time since last refill
+                const elapsed = time - this.lastRefill;
+                const newTokens = elapsed * this.refillRate;
+
+                // Update internal state (required for continuity)
+                this.tokens = Math.min(this.capacity, this.tokens + newTokens);
+                this.lastRefill = time;
+
+                if (this.tokens >= 1) {
+                    this.tokens -= 1;
+                    this.history.push({ type: 'ALLOW', time });
+                    return true; // Request allowed
+                } else {
+                    this.history.push({ type: 'DENY', time });
+                    return false; // Request denied
+                }
+            }
+
+            // Get current state (pure, no side effects)
+            state(time) {
+                const elapsed = time - this.lastRefill;
+                const tokens = Math.min(this.capacity, this.tokens + elapsed * this.refillRate);
+                return {
+                    tokens: Math.round(tokens * 100) / 100,
+                    capacity: this.capacity,
+                    refillRate: this.refillRate,
+                    history: [...this.history]
+                };
+            }
+        }
+
+        // Initialize rate limiter
+        const bucket = new TokenBucket(10, 1.0, 0);
+
+        // Canvas setup
+        const canvas = document.getElementById('rateLimiterCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let animationId = null;
+        let startTime = null;
+        let simulationTime = 0;
+
+        // Pure animation loop - each frame is a function of time
+        function animate(currentTime) {
+            if (!startTime) startTime = currentTime;
+
+            // Pure time calculation - no hidden state
+            simulationTime = currentTime - startTime;
+            const timeSinceEpoch = Date.now();
+
+            // Request tokens at regular intervals - pure time-based logic
+            if (Math.floor(simulationTime / 200) > Math.floor((simulationTime - 16.67) / 200)) {
+                bucket.request(timeSinceEpoch);
+            }
+
+            // Clear canvas
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background grid
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x <= canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            // Draw rate limiter visualization
+            drawRateLimiter();
+
+            // Draw stats
+            drawStats();
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function drawRateLimiter() {
+            const state = bucket.state(Date.now());
+            const timeSinceEpoch = Date.now();
+
+            // Draw bucket visualization
+            const bucketX = 100;
+            const bucketY = canvas.height / 2;
+            const bucketWidth = 200;
+            const bucketHeight = 100;
+
+            // Bucket background
+            ctx.fillStyle = '#f8f8f8';
+            ctx.fillRect(bucketX, bucketY, bucketWidth, bucketHeight);
+
+            // Bucket border
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bucketX, bucketY, bucketWidth, bucketHeight);
+
+            // Token level (visual representation)
+            const tokenLevel = (state.tokens / state.capacity) * bucketHeight;
+            ctx.fillStyle = state.tokens >= 1 ? '#4CAF50' : '#F44336';
+            ctx.fillRect(bucketX, bucketY + bucketHeight - tokenLevel, bucketWidth, tokenLevel);
+
+            // Tokens label
+            ctx.fillStyle = '#333';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Tokens: ${state.tokens.toFixed(1)}/${state.capacity}`, bucketX + 10, bucketY - 10);
+
+            // Refill rate label
+            ctx.fillText(`Refill Rate: ${state.refillRate}/s`, bucketX + 10, bucketY - 30);
+
+            // Draw request history (last 20 requests)
+            const recentHistory = state.history.slice(-20);
+            const historyY = canvas.height - 100;
+
+            ctx.fillStyle = '#333';
+            ctx.font = '12px Arial';
+            ctx.fillText('Recent Requests:', 10, historyY);
+
+            for (let i = 0; i < recentHistory.length; i++) {
+                const req = recentHistory[i];
+                const x = 10 + i * 80;
+                const color = req.type === 'ALLOW' ? '#4CAF50' : '#F44336';
+                ctx.fillStyle = color;
+                ctx.fillText(req.type, x, historyY + 20);
+            }
+        }
+
+        function drawStats() {
+            // Draw simulation stats
+            ctx.fillStyle = '#333';
+            ctx.font = '12px Arial';
+            ctx.fillText(`Time: ${simulationTime}ms`, 10, canvas.height - 40);
+            ctx.fillText(`Now: ${new Date().toLocaleTimeString()}`, 10, canvas.height - 25);
+        }
+
+        function startAnimation() {
+            if (!animationId) {
+                startTime = Date.now() - simulationTime;
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        function stopAnimation() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        function resetSimulation() {
+            stopAnimation();
+            simulationTime = 0;
+            startTime = null;
+            bucket.history = [];
+            bucket.tokens = bucket.capacity;
+            bucket.lastRefill = Date.now();
+            animate(Date.now());
+        }
+
+        function takeScreenshot() {
+            // Create a temporary canvas to capture current state
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Copy current canvas state
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Show screenshot info
+            const dataURL = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `rate-limiter-screenshot-${Date.now()}.png`;
+            link.href = dataURL;
+            link.click();
+
+            console.log('Screenshot saved! Image size:', dataURL.length, 'chars');
+            console.log('Pure time function: Each frame is independent, can be captured at any time');
+        }
+
+        // Initialize with some tokens
+        bucket.tokens = bucket.capacity;
+
+        // Start animation
+        startAnimation();
+    </script>
+</body>
+</html>

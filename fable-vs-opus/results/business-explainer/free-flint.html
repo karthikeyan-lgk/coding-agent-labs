@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observability Labs — AI Coding Explainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0f14;
+    --orange:#e8743b;
+    --cyan:#3ec7d4;
+    --text:#e6edf3;
+    --muted:rgba(230,237,243,.68);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+    overflow:hidden;
+    user-select:none;
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage{position:fixed;inset:0;overflow:hidden;background:var(--bg)}
+  .glow{position:absolute;border-radius:50%;filter:blur(110px);pointer-events:none}
+  .glow-1{width:56vmin;height:56vmin;background:rgba(232,116,59,.26);top:-18vmin;left:-12vmin;animation:glowDrift1 16s ease-in-out infinite alternate}
+  .glow-2{width:50vmin;height:50vmin;background:rgba(62,199,212,.2);bottom:-22vmin;right:-12vmin;animation:glowDrift2 20s ease-in-out infinite alternate}
+  @keyframes glowDrift1{to{transform:translate(9vmin,7vmin) scale(1.12)}}
+  @keyframes glowDrift2{to{transform:translate(-7vmin,-6vmin) scale(1.1)}}
+  .vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.62) 100%)}
+  .progress{position:absolute;top:0;left:0;height:3px;width:100%;background:linear-gradient(90deg,var(--orange),var(--cyan));transform-origin:left;animation:progressBar 30s linear forwards}
+  @keyframes progressBar{from{width:0}to{width:100%}}
+
+  .scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:6vmin 5vmin;opacity:0;transition:opacity 1.2s cubic-bezier(.22,1,.36,1);pointer-events:none;text-align:center}
+  .scene.active{opacity:1;pointer-events:auto}
+  .content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2rem;width:100%}
+
+  .eyebrow{opacity:0;font-size:clamp(.7rem,1.9vmin,1.05rem);font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:var(--cyan);border:1px solid rgba(62,199,212,.45);background:rgba(62,199,212,.08);padding:.55em 1.4em;border-radius:999px}
+  .scene.active .eyebrow{animation:rise .9s cubic-bezier(.22,1,.36,1) forwards;animation-delay:.25s}
+  .headline{opacity:0;font-size:clamp(2.9rem,8.6vmin,7.8rem);font-weight:900;text-transform:uppercase;letter-spacing:-.02em;line-height:1.04;color:var(--text)}
+  .headline .line{display:block}
+  .headline .accent{color:var(--orange)}
+  .scene.active .headline{animation:rise .9s cubic-bezier(.22,1,.36,1) forwards;animation-delay:.7s}
+  .sub{opacity:0;font-size:clamp(1rem,2.8vmin,1.75rem);line-height:1.5;color:var(--muted);font-weight:500;max-width:38ch}
+  .scene.active .sub{animation:rise 1s cubic-bezier(.22,1,.36,1) forwards;animation-delay:1.5s}
+  @keyframes rise{from{opacity:0;transform:translateY(36px);filter:blur(12px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+
+  .steps{margin-top:1rem;display:flex;flex-direction:column;gap:1.5rem;width:min(92vw,900px)}
+  .step{display:flex;align-items:center;gap:2.4rem;text-align:left;opacity:0}
+  .scene.active .step{animation:rise .8s cubic-bezier(.22,1,.36,1) forwards}
+  .scene.active .step:nth-child(1){animation-delay:1.2s}
+  .scene.active .step:nth-child(2){animation-delay:2.0s}
+  .scene.active .step:nth-child(3){animation-delay:2.8s}
+  .step .num{font-size:clamp(4.5rem,11vmin,8.5rem);font-weight:900;line-height:1;color:rgba(230,237,243,.1)}
+  .step .t{font-size:clamp(1.9rem,5vmin,3.4rem);font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--text);line-height:1.05}
+  .step .d{margin-top:.4rem;font-size:clamp(.95rem,2.2vmin,1.4rem);color:var(--muted);letter-spacing:.2em;text-transform:uppercase;font-weight:500}
+
+  .stat{display:flex;flex-direction:column;align-items:center;gap:.5rem;margin-top:.6rem}
+  .stat-num{opacity:0;font-size:clamp(5rem,16vmin,12rem);font-weight:900;line-height:1;color:var(--orange);text-shadow:0 0 70px rgba(232,116,59,.35)}
+  .stat-row{opacity:0;font-size:clamp(1.4rem,3.4vmin,2.6rem);font-weight:700;color:var(--cyan);letter-spacing:.08em}
+  .stat-label{opacity:0;font-size:clamp(.95rem,2.2vmin,1.4rem);color:var(--muted);letter-spacing:.16em;text-transform:uppercase;font-weight:500;margin-top:.7rem}
+  .scene.active .stat-num{animation:rise 1s cubic-bezier(.22,1,.36,1) forwards;animation-delay:1.6s}
+  .scene.active .stat-row{animation:rise .8s cubic-bezier(.22,1,.36,1) forwards;animation-delay:2.4s}
+  .scene.active .stat-label{animation:rise .8s cubic-bezier(.22,1,.36,1) forwards;animation-delay:3.2s}
+
+  .tagline{opacity:0;font-size:clamp(1.4rem,3.4vmin,2.4rem);font-weight:700;color:var(--text)}
+  .name{opacity:0;font-size:clamp(1.5rem,4.5vmin,2.8rem);font-weight:900;letter-spacing:.3em;text-transform:uppercase;color:var(--text)}
+  .scene.active .tagline{animation:rise .9s cubic-bezier(.22,1,.36,1) forwards;animation-delay:2.2s}
+  .scene.active .name{animation:rise .9s cubic-bezier(.22,1,.36,1) forwards;animation-delay:3.3s}
+
+  .mark{opacity:0}
+  .scene.active .mark{animation:markIn .8s cubic-bezier(.22,1,.36,1) forwards;animation-delay:.4s}
+  .orbit{transform-box:fill-box;transform-origin:center;animation:orbitSpin 12s linear infinite}
+  .orbit-2{animation-duration:16s;animation-direction:reverse}
+  @keyframes orbitSpin{to{transform:rotate(360deg)}}
+  .mark-dot{transform-box:fill-box;transform-origin:center;animation:dotPulse 2.4s ease-in-out infinite}
+  @keyframes dotPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.35);opacity:.55}}
+  @keyframes markIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+
+  @media (prefers-reduced-motion: reduce){
+    .scene,.eyebrow,.headline,.sub,.step,.stat-num,.stat-row,.stat-label,.tagline,.name,.mark{animation:none !important;opacity:1 !important;transform:none !important;filter:none !important}
+    .scene{opacity:1 !important;transition:none !important}
+    .glow{animation:none !important}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="vignette"></div>
+  <div class="progress"></div>
+
+  <!-- SCENE 1 / 0-6s : THE PROBLEM -->
+  <section class="scene" id="s1">
+    <div class="content">
+      <div class="eyebrow">THE PROBLEM</div>
+      <h1 class="headline"><span class="line">YOUR AI AGENT</span><span class="line accent">IS BURNING CASH.</span></h1>
+      <p class="sub">You trust the agent. You have no idea what it really costs.</p>
+    </div>
+  </section>
+
+  <!-- SCENE 2 / 6-12s : WHAT I DO -->
+  <section class="scene" id="s2">
+    <div class="content">
+      <div class="eyebrow">THE SOLUTION</div>
+      <h1 class="headline"><span class="line">REAL NUMBERS.</span><span class="line accent">REAL COSTS.</span></h1>
+      <p class="sub">Observability Labs measures Claude Code and other AI coding tools with real lab numbers — tokens, cost, time.</p>
+    </div>
+  </section>
+
+  <!-- SCENE 3 / 12-18s : HOW IT WORKS -->
+  <section class="scene" id="s3">
+    <div class="content">
+      <div class="eyebrow">HOW IT WORKS</div>
+      <h1 class="headline"><span class="line">THREE STEPS.</span><span class="line accent">ZERO GUESSWORK.</span></h1>
+      <div class="steps">
+        <div class="step">
+          <div class="num">01</div>
+          <div>
+            <div class="t">Connect</div>
+            <div class="d">Your AI agent</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">02</div>
+          <div>
+            <div class="t">Measure</div>
+            <div class="d">Tokens · Cost · Time</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">03</div>
+          <div>
+            <div class="t">Know</div>
+            <div class="d">The real numbers</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCENE 4 / 18-24s : PROOF -->
+  <section class="scene" id="s4">
+    <div class="content">
+      <div class="eyebrow">THE PROOF</div>
+      <h1 class="headline"><span class="line">REAL LAB.</span><span class="line accent">REAL COST.</span></h1>
+      <div class="stat">
+        <div class="stat-num">198K</div>
+        <div class="stat-row">$3.30 · 8M 12S</div>
+        <div class="stat-label">Avg. tokens burned per coding task</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCENE 5 / 24-30s : THE NAME -->
+  <section class="scene" id="s5">
+    <div class="content">
+      <svg class="mark" viewBox="0 0 120 120" width="110" height="110" aria-hidden="true">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(230,237,243,0.14)" stroke-width="2"/>
+        <ellipse class="orbit" cx="60" cy="60" rx="22" ry="50" fill="none" stroke="#3ec7d4" stroke-width="3" transform="rotate(-24 60 60)"/>
+        <ellipse class="orbit orbit-2" cx="60" cy="60" rx="22" ry="50" fill="none" stroke="#e8743b" stroke-width="3" transform="rotate(24 60 60)"/>
+        <circle class="mark-dot" cx="60" cy="60" r="8" fill="#e8743b"/>
+      </svg>
+      <h1 class="headline"><span class="line">OBSERVABILITY</span><span class="line accent">LABS</span></h1>
+      <div class="tagline">You don't guess. You measure.</div>
+      <div class="name">Abhikarthik</div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var scenes = Array.prototype.slice.call(document.querySelectorAll('.scene'));
+  var DUR = 30000;
+  var sceneLen = 6000;
+  var start = null;
+  var raf = null;
+  function loop(ts){
+    if (start === null) start = ts;
+    var el = (ts - start) % DUR;
+    var idx = Math.min(Math.floor(el / sceneLen), scenes.length - 1);
+    for (var i = 0; i < scenes.length; i++){
+      scenes[i].classList.toggle('active', i === idx);
+    }
+    if (ts - start < DUR + 300) raf = requestAnimationFrame(loop);
+    else cancelAnimationFrame(raf);
+  }
+  raf = requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

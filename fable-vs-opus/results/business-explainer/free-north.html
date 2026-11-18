@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Observability Labs - AI Coding Tool Analysis</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: #0b0f14;
+            color: #e6edf3;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        .scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 8%;
+        }
+
+        .scene.active {
+            opacity: 1;
+            z-index: 1;
+        }
+
+        .scene.next {
+            opacity: 0;
+            z-index: 2;
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #e6edf3;
+            line-height: 1.1;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 2rem;
+            font-weight: 500;
+            margin-bottom: 2rem;
+            color: #3ec7d4;
+            text-align: center;
+        }
+
+        p {
+            font-size: 1.5rem;
+            line-height: 1.4;
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+            color: #e6edf3;
+            font-weight: 300;
+        }
+
+        .steps {
+            display: flex;
+            justify-content: space-between;
+            max-width: 1000px;
+            margin: 0 auto;
+            gap: 2rem;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+        }
+
+        .step-number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #e8743b;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .step.active .step-number {
+            opacity: 1;
+            font-size: 3.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .step-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #3ec7d4;
+            margin-bottom: 0.5rem;
+        }
+
+        .step-desc {
+            font-size: 1.2rem;
+            color: #e6edf3;
+            line-height: 1.3;
+        }
+
+        .metric {
+            display: inline-block;
+            background: rgba(62, 199, 212, 0.1);
+            border: 2px solid #3ec7d4;
+            border-radius: 10px;
+            padding: 1rem 2rem;
+            margin: 0.5rem;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #3ec7d4;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .scene-5 {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .scene-5 h2 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #e8743b;
+        }
+
+        .scene-5 p {
+            font-size: 2rem;
+            max-width: 900px;
+            margin-bottom: 2rem;
+        }
+
+        .name {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #3ec7d4;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid #e8743b;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.8s ease-in forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .subtle-glow {
+            animation: subtleGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes subtleGlow {
+            0%, 100% { text-shadow: 0 0 10px rgba(62, 199, 212, 0.3); }
+            50% { text-shadow: 0 0 20px rgba(62, 199, 212, 0.5); }
+        }
+
+        .scene.current .metric {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="scene scene-1 active" id="scene-1">
+        <h1>Every developer knows the <strong>problem</strong></h1>
+        <p>Guesstimating tokens, costs, and time when <strong>AI coding tools make decisions</strong> for you. No real data, just guesswork.</p>
+    </div>
+
+    <div class="scene scene-2" id="scene-2">
+        <h1>What I <strong>measure</strong></h1>
+        <p>Observability Labs puts <strong>Claude Code and other AI coding tools in a lab</strong> and extracts real numbers: tokens, costs, time, every single run.</p>
+    </div>
+
+    <div class="scene scene-3" id="scene-3">
+        <h2>How It <strong>Works</strong></h2>
+        <div class="steps">
+            <div class="step" data-step="1">
+                <div class="step-number">1</div>
+                <div class="step-title">Run Tasks</div>
+                <div class="step-desc">Ask AI coding agents to solve real problems</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-number">2</div>
+                <div class="step-title">Capture Data</div>
+                <div class="step-desc">Extract every metric: tokens, costs, execution time</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-number">3</div>
+                <div class="step-title">Analyze Results</div>
+                <div class="step-desc">Present real numbers, not promises</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="scene scene-4" id="scene-4">
+        <h2>Real <strong>Proof</strong></h2>
+        <div class="metric">3.2K tokens for Claude Code</div>
+        <div class="metric">0.14</div>
+        <div class="metric">120ms avg response</div>
+        <p>Real data from hundreds of lab runs across multiple AI coding tools.</p>
+    </div>
+
+    <div class="scene scene-5" id="scene-5">
+        <h2>Made for <strong>Developers</strong></h2>
+        <p>The only channel that shows you <strong>what your AI coding tools actually do</strong>, so you can make informed decisions every day.</p>
+        <div class="name">Your Name Here</div>
+    </div>
+
+    <script>
+        let currentScene = 1;
+        const totalScenes = 5;
+        let sceneTransitioned = false;
+
+        function nextScene() {
+            if (sceneTransitioned) return;
+
+            const current = document.getElementById(`scene-${currentScene}`);
+            const next = document.getElementById(`scene-${currentScene + 1}`);
+
+            if (current && next) {
+                current.classList.remove('active');
+                current.classList.add('next');
+                next.classList.add('active');
+                next.classList.add('fade-in');
+
+                // Update steps for scene 3
+                if (currentScene === 2) {
+                    updateSteps();
+                }
+
+                currentScene++;
+                sceneTransitioned = true;
+
+                // Reset after 30 seconds
+                setTimeout(() => {
+                    resetToScene(1);
+                }, 30000);
+            }
+        }
+
+        function updateSteps() {
+            const steps = document.querySelectorAll('.step');
+            steps.forEach((step, index) => {
+                const stepNum = index + 1;
+                step.classList.remove('active');
+                if (stepNum <= 3) {
+                    setTimeout(() => {
+                        steps[stepNum - 1].classList.add('active');
+                    }, stepNum * 800);
+                }
+            });
+        }
+
+        function resetToScene(sceneNum) {
+            // Reset all scenes
+            for (let i = 1; i <= totalScenes; i++) {
+                const scene = document.getElementById(`scene-${i}`);
+                scene.classList.remove('active', 'next', 'fade-in');
+                scene.style.opacity = '0';
+            }
+
+            // Set current scene as active
+            const current = document.getElementById(`scene-${sceneNum}`);
+            current.classList.add('active');
+            current.style.opacity = '1';
+
+            currentScene = sceneNum;
+            sceneTransitioned = false;
+
+            // Re-initialize steps for scene 3
+            if (sceneNum === 3) {
+                updateSteps();
+            }
+        }
+
+        // Auto-advance through scenes every 6 seconds (30s / 5 scenes)
+        setInterval(nextScene, 6000);
+
+        // Add click handler to skip
+        document.addEventListener('click', function(e) {
+            if (!sceneTransitioned) {
+                nextScene();
+            }
+        });
+    </script>
+</body>
+</html>

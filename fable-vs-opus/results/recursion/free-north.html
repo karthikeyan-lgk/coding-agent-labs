@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recursion - The Ultimate Video Style Challenge</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: fadeIn 1s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-size: 2.5rem;
+            animation: pulse 3s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .video-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            max-width: 800px;
+            width: 100%;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%;
+            margin-bottom: 20px;
+        }
+
+        .video-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .video-title {
+            font-size: 1.8rem;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .video-description {
+            font-size: 1.1rem;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .video-meta {
+            font-size: 0.9rem;
+            color: #888;
+            font-style: italic;
+        }
+
+        .self-referential {
+            background: linear-gradient(45deg, #f3ec78, #af4261);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: bold;
+        }
+
+        .exit-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .exit-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2rem; }
+            .video-container { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔄 Recursion: Every Style, Every Time</h1>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Academic Lecture Style"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">1. Academic Lecture Style</div>
+        <div class="video-description">
+            <span class="self-referential">The traditional way recursion is taught</span> - think of this as the base case. Every explanation you see has its style, just like every video here. This one uses the formal academic approach with slides and a serious demeanor.
+        </div>
+        <div class="video-meta">
+            Style: Formal Lecture | Duration: 5min | Self-Referential Element: The slides literally explain why this is the "base case" of video styles
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Action Movie Style"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">2. Action Movie Style</div>
+        <div class="video-description">
+            <span class="self-referential">This is the main character!</span> Every explanation you see is dramatically different. We're in the matrix now - recursion is your指南 (guide), and every return statement is a comeback. Fast cuts, epic music, and the narrator literally jumps through dimensional loops.
+        </div>
+        <div class="video-meta">
+            Style: Action Thriller | Duration: 3min | Self-Referential Element: The video shows our protagonist entering different "style dimensions"
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Vlog Style"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">3. Vlog/YouTube Style</div>
+        <div class="video-description">
+            <span class="self-referential">Hey guys! Welcome back to my channel</span> - where every explanation about recursion has a radically different video style! Today we're doing recursion, but it's not your typical explanation. I'm sitting on my couch, explaining recursion like I'm explaining why I binge-watched three series at once. The camera is shaky, the lighting is bad, but the explanations are legendary.
+        </div>
+        <div class="video-meta">
+            Style: Casual Vlog | Duration: 4min | Self-Referential Element: Mentions this being part of the "vlog series" where "every explanation has a radically different style"
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Cartoon Style"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">4. Cartoon/Animation Style</div>
+        <div class="video-description">
+            <span class="self-referential">And... action! ♪Every explanation about recursion has a radically different video style♪</span> - this is the main theme song of our show! Two turtles, a talking computer, and a pile of books are explaining recursion. The turtles keep asking "but what about the base case?" and the computer keeps "recursing" through the explanation.
+        </div>
+        <div class="video-meta">
+            Style: Animated Cartoon | Duration: 6min | Self-Referential Element: Uses cartoon physics to explain recursion, characters break the fourth wall
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Tech Startup Demo"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">5. Tech Startup Demo Style</div>
+        <div class="video-description">
+            <span class="self-referential">We've built the recursion explanation engine</span> - where every explanation about recursion has a radically different video style! Our dashboard shows user engagement metrics. This is the "demo day" presentation. Every explanation is a different "module." We're explaining recursion using recursion - it's meta even by our standards.
+        </div>
+        <div class="video-meta">
+            Style: Tech Demo | Duration: 4min | Self-Referential Element: Uses dashboard UI and product pitch language
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Cooking Show Style"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">6. Cooking Show Style</div>
+        <div class="video-description">
+            <span class="self-referential">And now for recursion - the recipe you never knew you needed</span> - where every explanation about recursion has a radically different video style! Welcome to the kitchen! We're making recursion from scratch. The recipe calls for: base case (1 egg), recursive case (repeat until done), and lots of seasoning: "whoa!" and "oh cool!" - the secret ingredients of good explanations.
+        </div>
+        <div class="video-meta">
+            Style: Cooking Demonstration | Duration: 5min | Self-Referential Element: Cooking terminology applied to recursion concepts
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - News Report Style"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">7. News Report Style</div>
+        <div class="video-description">
+            <span class="self-referential">This just in: every explanation about recursion has a radically different video style</span> - bringing you live from the recursion studio! The anchor is explaining recursion to the audience. Every segment has its own style, just like this breaking news segment on why recursion matters in computer science and why you should care.
+        </div>
+        <div class="video-meta">
+            Style: News Broadcast | Duration: 4min | Self-Referential Element: News format with "breaking news" framing
+        </div>
+    </div>
+
+    <div class="video-container">
+        <div class="video-wrapper">
+            <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                    title="Recursion Explained - Motivational Speaking"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
+        </div>
+        <div class="video-title">8. Motivational Speaking Style</div>
+        <div class="video-description">
+            <span class="self-referential">Every explanation about recursion has a radically different video style</span> - and that's a good thing! You are your own base case - your unique explanation of recursion. Every return statement is a triumph. Every stack overflow is just an opportunity to start over stronger. This is your reminder that even in recursion, the journey matters more than the destination.
+        </div>
+        <div class="video-meta">
+            Style: Inspirational Talk | Duration: 3min | Self-Referential Element: Uses motivational speaking techniques
+        </div>
+    </div>
+
+    <button class="exit-button" onclick="window.close()">
+        Close This Recursive Video Experience
+    </button>
+</body>
+</html>
