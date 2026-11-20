@@ -1,0 +1,12 @@
+{"run":"hyperframes-opus-b1-1","try":1,"exit":0,"render_s":41.3,"probe":"1320,2868  25.800000 "}
+{"run":"remotion-opus-b1-1","try":1,"exit":0,"render_s":70.4,"probe":"1320,2868  25.813000 "}
+{"run":"hyperframes-opus-b2-1","try":1,"exit":0,"render_s":23.1,"probe":"1920,1080 45.000000 "}
+{"run":"remotion-opus-b2-1","try":1,"exit":0,"render_s":32.3,"probe":"1920,1080 45.000000 "}
+{"run":"hyperframes-opus-b1-1","try":2,"exit":0,"render_s":45.0,"probe":"1320,2868  25.800000 "}
+{"run":"remotion-opus-b1-1","try":2,"exit":0,"render_s":65.9,"probe":"1320,2868  25.813000 "}
+{"run":"hyperframes-opus-b2-1","try":2,"exit":0,"render_s":20.3,"probe":"1920,1080 45.000000 "}
+{"run":"remotion-opus-b2-1","try":2,"exit":0,"render_s":32.7,"probe":"1920,1080 45.000000 "}
+{"run":"hyperframes-opus-b1-1","try":3,"exit":0,"render_s":44.2,"probe":"1320,2868  25.800000 "}
+{"run":"remotion-opus-b1-1","try":3,"exit":0,"render_s":68.8,"probe":"1320,2868  25.813000 "}
+{"run":"hyperframes-opus-b2-1","try":3,"exit":0,"render_s":22.9,"probe":"1920,1080 45.000000 "}
+{"run":"remotion-opus-b2-1","try":3,"exit":0,"render_s":31.5,"probe":"1920,1080 45.000000 "}

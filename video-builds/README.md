@@ -48,3 +48,33 @@ arm now copies the skills from the 0.9.15 plugin. raea-1: 809 s, 27 turns, $0.42
 
 The Remotion and fframes arms copy skills and a warm build directory from our working repo (`$REPO/.agents/skills`,
 `$REPO/fframes/target`); point those two lines at your own copies of the Remotion agent skills and an fframes checkout.
+
+## HyperFrames vs Remotion on Opus 5.5 (2026-11-20)
+
+Lab for the video "Claude Code Animation: HyperFrames vs Remotion, Same Video, Measured". Same rules as above,
+on Opus, one build per tool per brief, HyperFrames 0.9.72 and Remotion 4.0.545:
+
+```sh
+MODEL=opus HF_VERSION=0.9.72 ./run_build.sh hyperframes opus-b1-1
+MODEL=opus REMOTION_VERSION=4.0.545 ./run_build.sh remotion opus-b1-1
+MODEL=opus HF_VERSION=0.9.72 BRIEF=BRIEF_explainer.md ./run_build.sh hyperframes opus-b2-1
+MODEL=opus REMOTION_VERSION=4.0.545 BRIEF=BRIEF_explainer.md ./run_build.sh remotion opus-b2-1
+```
+
+- `BRIEF.md` is brief 1 (the Day 5 Short, 9:16). `BRIEF_explainer.md` is brief 2: a 16:9, 45 s explainer that
+  draws six models' scores and costs as bars from `assets_explainer/scores.csv`.
+- `HF_VERSION` copies the agent skills shipped in that npm release, unpacked under `~/.cache/hf-skills/<version>`
+  (`npm pack hyperframes@0.9.72` and untar it there).
+- `run_edit.sh <tool> <run>`: the edit test. Resumes the finished build's session with one change request (bars blue,
+  title 80 px higher), keeps the old render as `before.mp4`, and logs the edit to `out/edits.jsonl`. A resumed session
+  reports build + edit cost together, so the script subtracts the build's cost.
+- `time_split.py`: splits each run's time into model, render, install, check and other tool time, plus network
+  stalls (an API request that hung), from Claude Code's own timestamped transcript.
+- `render_speed.sh`: re-renders each finished video 3 times with the exact command its agent used, alternating
+  the two tools, memory-capped.
+- `results/opus-2026-11-20/`: what we got. `builds.jsonl`, `edits.jsonl`, `render_speed.jsonl`, and `quality.md`
+  (frame checks, time split, edit and render tables).
+
+Short version: Remotion was faster on the Short (5:31 vs 6:29) and cheaper on every build and edit; HyperFrames
+passed every frame check (Remotion's "Why?" at 7.1 s runs off both edges, and its own frame check called it fine)
+and rendered 1.4-1.6x faster. One run per tool per brief, so treat it as a strong hint, not a law.
