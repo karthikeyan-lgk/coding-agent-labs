@@ -51,7 +51,7 @@ The Remotion and fframes arms copy skills and a warm build directory from our wo
 
 ## HyperFrames vs Remotion on Opus 5.5 (2026-11-20)
 
-Lab for the video "Claude Code Animation: HyperFrames vs Remotion, Same Video, Measured". Same rules as above,
+Lab for the video ["Claude Code Animation: HyperFrames vs Remotion, Same Video, Measured"](https://www.youtube.com/watch?v=NIcNbLtOnuM). Same rules as above,
 on Opus, one build per tool per brief, HyperFrames 0.9.72 and Remotion 4.0.545:
 
 ```sh
